@@ -43,3 +43,26 @@ Format per entry:
 **Decision:** The hook client resolves the actor id from the hook payload: `agent_id` for a subagent, else `session_id` for a top-level session.
 **Why:** `agent_id` is the confirmed unique per-subagent identifier; top-level sessions have only `session_id`. Human editors and shell processes have neither and record nothing.
 **Links:** ADR-0005; CONTEXT.md (Actor id); TICKETS T09.
+
+## 2026-09-06 — T01: daemon listens on loopback `127.0.0.1:8973` by default
+**Decision:** `CONCORD_ADDR` defaults to `127.0.0.1:8973`; the daemon binds loopback only.
+**Why:** concord is one daemon per machine, never networked (ADR-0007); loopback avoids exposing it and sidesteps firewall prompts.
+**Alternatives:** `0.0.0.0` (rejected — needless exposure); a Unix socket (rejected — cross-platform friction on Windows).
+**Links:** TICKETS T01; ADR-0007.
+
+## 2026-09-06 — T01: Connect served over HTTP/1.1, no h2c
+**Decision:** The daemon serves the Connect handler on a plain `net/http` server; no h2c/HTTP-2 wiring.
+**Why:** Connect unary RPC works over HTTP/1.1, which is enough for a localhost daemon + a thin unary client. Avoids an extra dependency (`golang.org/x/net/http2/h2c`).
+**Alternatives:** h2c to also accept gRPC clients — deferred; no gRPC client is planned.
+**Links:** TICKETS T01; ADR-0007.
+
+## 2026-09-06 — T01: tests get Dragonfly from testcontainers, image pinned by tag
+**Decision:** The `test.StartDragonfly` harness boots `docker.dragonflydb.io/dragonflydb/dragonfly:latest` via testcontainers-go; CI relies on the same harness (the ubuntu runner's Docker), not a `services:` container.
+**Why:** One code path produces Dragonfly for both local and CI runs; no divergence between "what tests spin up" and "what CI provides."
+**Alternatives:** A GitHub Actions `services:` Dragonfly (rejected — would bypass the harness and drift from local behaviour). Digest-pinning the image is deferred; `:latest` is acceptable pre-1.0.
+**Links:** TICKETS T01; DECISIONS "tests run against real Dragonfly".
+
+## 2026-09-06 — T01: repo normalizes line endings to LF via `.gitattributes`
+**Decision:** `* text=auto eol=lf` plus explicit `*.go/*.proto/*.md eol=lf`.
+**Why:** Generated code is committed; the CI gate runs `buf generate` then `git diff --exit-code`. Without normalization, a Windows CRLF checkout would diff against Linux LF codegen and fail the gate spuriously.
+**Links:** TICKETS T01; the green gate.

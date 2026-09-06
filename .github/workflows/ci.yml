@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+
+      - name: Install codegen tools
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+          go install github.com/bufbuild/buf/cmd/buf@latest
+
+      - name: Verify generated code is current
+        run: |
+          buf generate
+          git diff --exit-code
+
+      - name: gofmt
+        run: test -z "$(gofmt -l cmd internal test)"
+
+      - name: Vet and build
+        run: |
+          go vet ./...
+          go build ./...
+
+      # Tests boot a real ephemeral Dragonfly via testcontainers; the ubuntu
+      # runner provides the Docker daemon they need.
+      - name: Test
+        run: go test ./...

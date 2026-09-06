@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package concord.v1;
+
+option go_package = "github.com/Kminhas21/concord/gen/concord/v1;concordv1";
+
+// CoordinationService is the single RPC seam for concord. Every hook client and
+// every test drives concord through this contract; nothing reaches past it.
+service CoordinationService {
+  // Ping is a liveness probe used to prove the seam end to end.
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {
+  string message = 1;
+}
+
+message PingResponse {
+  string message = 1;
+}
