@@ -16,11 +16,12 @@ import (
 // Service implements concordv1connect.CoordinationServiceHandler.
 type Service struct {
 	readHashes store.ReadHashStore
+	intents    store.IntentStore
 }
 
 // NewService constructs a Service backed by the given stores.
-func NewService(readHashes store.ReadHashStore) *Service {
-	return &Service{readHashes: readHashes}
+func NewService(readHashes store.ReadHashStore, intents store.IntentStore) *Service {
+	return &Service{readHashes: readHashes, intents: intents}
 }
 
 var _ concordv1connect.CoordinationServiceHandler = (*Service)(nil)
@@ -49,6 +50,37 @@ func (s *Service) ReconcileFileChange(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&concordv1.ReconcileFileChangeResponse{}), nil
+}
+
+// RegisterPredicted records an actor's predicted footprint once at start.
+func (s *Service) RegisterPredicted(ctx context.Context, req *connect.Request[concordv1.RegisterPredictedRequest]) (*connect.Response[concordv1.RegisterPredictedResponse], error) {
+	m := req.Msg
+	if err := s.intents.PutPredicted(ctx, m.GetActorId(), m.GetIntentText(), m.GetPredictedPaths()); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&concordv1.RegisterPredictedResponse{}), nil
+}
+
+// QueryIntent returns every active intent as a candidate, each flagged with
+// whether its footprint literally overlaps the query paths. It never denies:
+// semantic judgement is left to the caller, which reads intent_text.
+func (s *Service) QueryIntent(ctx context.Context, req *connect.Request[concordv1.QueryIntentRequest]) (*connect.Response[concordv1.QueryIntentResponse], error) {
+	records, err := s.intents.ListIntents(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	queryPaths := req.Msg.GetPaths()
+	resp := &concordv1.QueryIntentResponse{}
+	for _, r := range records {
+		footprint := append(append([]string{}, r.PredictedPaths...), r.ActualPaths...)
+		resp.Matches = append(resp.Matches, &concordv1.IntentMatch{
+			ActorId:     r.ActorID,
+			IntentText:  r.IntentText,
+			Paths:       footprint,
+			PathOverlap: pathsOverlap(queryPaths, footprint),
+		})
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // CheckEdit blocks a stale edit: one whose target changed since the actor's

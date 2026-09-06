@@ -31,7 +31,8 @@ func main() {
 		dragonflyAddr = defaultDragonflyAddr
 	}
 
-	svc := coordination.NewService(store.NewRedisStore(dragonflyAddr))
+	rs := store.NewRedisStore(dragonflyAddr)
+	svc := coordination.NewService(rs, rs)
 	mux := http.NewServeMux()
 	path, handler := concordv1connect.NewCoordinationServiceHandler(svc)
 	mux.Handle(path, handler)

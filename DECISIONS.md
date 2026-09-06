@@ -96,3 +96,20 @@ Format per entry:
 **Why:** Its meaning and driver differ from a tool Read — it is fired by the `PostToolUse` git-status sweep after a shell write (T09), not by a Read tool. Keeping it separate keeps the contract self-documenting and leaves room for reconcile-only behaviour later (e.g. only-if-record-exists) without overloading RecordRead.
 **Alternatives:** Merge into RecordRead (rejected — conflates two callers/meanings).
 **Links:** TICKETS T05/T09; docs/spikes/filechanged.md.
+
+## 2026-09-06 — T06: path overlap = same file or same directory
+**Decision:** A path expands to tokens `{normalized full path, parent dir}`; two footprints overlap when their token sets intersect. A bare top-level file contributes only its full path (the "." dir is dropped), so unrelated root files don't collide.
+**Why:** Exact-file-only overlap misses agents working different files in the same directory — the common "are we in the same area?" case. Full segment tokenization is the opposite failure: everything under `src/` would collide. `{file, parent-dir}` is the useful middle. Over-reporting is safe anyway — the layer never denies.
+**Alternatives:** Exact full-path match only (too tight); per-segment tokens (too loose — top dirs collide); Redis SINTER with a reverse index (deferred — keyspace is ~6 actors, a Go scan is trivial).
+**Links:** TICKETS T06; ADR-0006; internal/coordination/overlap.go.
+
+## 2026-09-06 — T06: QueryIntent returns all active intents as candidates
+**Decision:** `QueryIntent` returns every active intent record, each with a `path_overlap` flag; it does not filter to overlapping ones, and it ignores the caller's `intent_text` server-side.
+**Why:** Semantic overlap is the caller's (the model's) judgement (ADR-0006), so the server must hand back candidate `intent_text`s even when paths don't overlap. The literal `path_overlap` flag is the only matching the server does. The tiny keyspace makes returning all records cheap.
+**Consequence:** If the keyspace ever grows large, add server-side candidate filtering; not needed at measured scale.
+**Links:** TICKETS T06; ADR-0006; docs/budgets.md.
+
+## 2026-09-06 — T06: intent records stored as JSON + an `intents` set
+**Decision:** Each record is a JSON blob at `intent:{actor_id}`; an `intents` Redis set enumerates active actors. `RedisStore` implements both `ReadHashStore` and `IntentStore`.
+**Why:** A JSON blob keeps the whole footprint (predicted + actual) in one value, simple to read and rewrite; the set gives O(1) enumeration without SCAN. One store type over one Dragonfly connection keeps wiring trivial while the service still depends on two segregated interfaces.
+**Links:** TICKETS T06/T07.

@@ -21,6 +21,15 @@ service CoordinationService {
   // actor rewrote a path out of band (e.g. a shell command), so the actor is
   // not falsely blocked on its own change. Other actors are unaffected.
   rpc ReconcileFileChange(ReconcileFileChangeRequest) returns (ReconcileFileChangeResponse);
+
+  // RegisterPredicted records an actor's predicted footprint once at subagent
+  // start, from the delegation prompt. Advisory only.
+  rpc RegisterPredicted(RegisterPredictedRequest) returns (RegisterPredictedResponse);
+
+  // QueryIntent reports the active intents that may overlap a proposed piece of
+  // work. It never denies: it returns candidates and a literal path-overlap
+  // flag, leaving semantic judgement to the caller.
+  rpc QueryIntent(QueryIntentRequest) returns (QueryIntentResponse);
 }
 
 message PingRequest {
@@ -60,3 +69,32 @@ message ReconcileFileChangeRequest {
 }
 
 message ReconcileFileChangeResponse {}
+
+message RegisterPredictedRequest {
+  string actor_id = 1;
+  string intent_text = 2;
+  repeated string predicted_paths = 3;
+}
+
+message RegisterPredictedResponse {}
+
+message QueryIntentRequest {
+  // intent_text is the caller's own intent, echoed for the caller's semantic
+  // comparison; concord does not use it for matching.
+  string intent_text = 1;
+  repeated string paths = 2;
+}
+
+// IntentMatch is one active intent returned as a candidate. path_overlap marks
+// whether its footprint literally overlaps the query paths (same file or
+// directory); intent_text is provided for the caller to judge semantic overlap.
+message IntentMatch {
+  string actor_id = 1;
+  string intent_text = 2;
+  repeated string paths = 3;
+  bool path_overlap = 4;
+}
+
+message QueryIntentResponse {
+  repeated IntentMatch matches = 1;
+}

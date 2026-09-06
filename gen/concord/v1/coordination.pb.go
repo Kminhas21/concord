@@ -416,6 +416,271 @@ func (*ReconcileFileChangeResponse) Descriptor() ([]byte, []int) {
 	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{7}
 }
 
+type RegisterPredictedRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ActorId        string                 `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	IntentText     string                 `protobuf:"bytes,2,opt,name=intent_text,json=intentText,proto3" json:"intent_text,omitempty"`
+	PredictedPaths []string               `protobuf:"bytes,3,rep,name=predicted_paths,json=predictedPaths,proto3" json:"predicted_paths,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RegisterPredictedRequest) Reset() {
+	*x = RegisterPredictedRequest{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterPredictedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterPredictedRequest) ProtoMessage() {}
+
+func (x *RegisterPredictedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterPredictedRequest.ProtoReflect.Descriptor instead.
+func (*RegisterPredictedRequest) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RegisterPredictedRequest) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *RegisterPredictedRequest) GetIntentText() string {
+	if x != nil {
+		return x.IntentText
+	}
+	return ""
+}
+
+func (x *RegisterPredictedRequest) GetPredictedPaths() []string {
+	if x != nil {
+		return x.PredictedPaths
+	}
+	return nil
+}
+
+type RegisterPredictedResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterPredictedResponse) Reset() {
+	*x = RegisterPredictedResponse{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterPredictedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterPredictedResponse) ProtoMessage() {}
+
+func (x *RegisterPredictedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterPredictedResponse.ProtoReflect.Descriptor instead.
+func (*RegisterPredictedResponse) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{9}
+}
+
+type QueryIntentRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// intent_text is the caller's own intent, echoed for the caller's semantic
+	// comparison; concord does not use it for matching.
+	IntentText    string   `protobuf:"bytes,1,opt,name=intent_text,json=intentText,proto3" json:"intent_text,omitempty"`
+	Paths         []string `protobuf:"bytes,2,rep,name=paths,proto3" json:"paths,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryIntentRequest) Reset() {
+	*x = QueryIntentRequest{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryIntentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryIntentRequest) ProtoMessage() {}
+
+func (x *QueryIntentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryIntentRequest.ProtoReflect.Descriptor instead.
+func (*QueryIntentRequest) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *QueryIntentRequest) GetIntentText() string {
+	if x != nil {
+		return x.IntentText
+	}
+	return ""
+}
+
+func (x *QueryIntentRequest) GetPaths() []string {
+	if x != nil {
+		return x.Paths
+	}
+	return nil
+}
+
+// IntentMatch is one active intent returned as a candidate. path_overlap marks
+// whether its footprint literally overlaps the query paths (same file or
+// directory); intent_text is provided for the caller to judge semantic overlap.
+type IntentMatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ActorId       string                 `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	IntentText    string                 `protobuf:"bytes,2,opt,name=intent_text,json=intentText,proto3" json:"intent_text,omitempty"`
+	Paths         []string               `protobuf:"bytes,3,rep,name=paths,proto3" json:"paths,omitempty"`
+	PathOverlap   bool                   `protobuf:"varint,4,opt,name=path_overlap,json=pathOverlap,proto3" json:"path_overlap,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IntentMatch) Reset() {
+	*x = IntentMatch{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IntentMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IntentMatch) ProtoMessage() {}
+
+func (x *IntentMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IntentMatch.ProtoReflect.Descriptor instead.
+func (*IntentMatch) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *IntentMatch) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *IntentMatch) GetIntentText() string {
+	if x != nil {
+		return x.IntentText
+	}
+	return ""
+}
+
+func (x *IntentMatch) GetPaths() []string {
+	if x != nil {
+		return x.Paths
+	}
+	return nil
+}
+
+func (x *IntentMatch) GetPathOverlap() bool {
+	if x != nil {
+		return x.PathOverlap
+	}
+	return false
+}
+
+type QueryIntentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Matches       []*IntentMatch         `protobuf:"bytes,1,rep,name=matches,proto3" json:"matches,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryIntentResponse) Reset() {
+	*x = QueryIntentResponse{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryIntentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryIntentResponse) ProtoMessage() {}
+
+func (x *QueryIntentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryIntentResponse.ProtoReflect.Descriptor instead.
+func (*QueryIntentResponse) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *QueryIntentResponse) GetMatches() []*IntentMatch {
+	if x != nil {
+		return x.Matches
+	}
+	return nil
+}
+
 var File_concord_v1_coordination_proto protoreflect.FileDescriptor
 
 const file_concord_v1_coordination_proto_rawDesc = "" +
@@ -442,13 +707,33 @@ const file_concord_v1_coordination_proto_rawDesc = "" +
 	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x19\n" +
 	"\bnew_hash\x18\x03 \x01(\tR\anewHash\"\x1d\n" +
-	"\x1bReconcileFileChangeResponse2\xcf\x02\n" +
+	"\x1bReconcileFileChangeResponse\"\x7f\n" +
+	"\x18RegisterPredictedRequest\x12\x19\n" +
+	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x1f\n" +
+	"\vintent_text\x18\x02 \x01(\tR\n" +
+	"intentText\x12'\n" +
+	"\x0fpredicted_paths\x18\x03 \x03(\tR\x0epredictedPaths\"\x1b\n" +
+	"\x19RegisterPredictedResponse\"K\n" +
+	"\x12QueryIntentRequest\x12\x1f\n" +
+	"\vintent_text\x18\x01 \x01(\tR\n" +
+	"intentText\x12\x14\n" +
+	"\x05paths\x18\x02 \x03(\tR\x05paths\"\x82\x01\n" +
+	"\vIntentMatch\x12\x19\n" +
+	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x1f\n" +
+	"\vintent_text\x18\x02 \x01(\tR\n" +
+	"intentText\x12\x14\n" +
+	"\x05paths\x18\x03 \x03(\tR\x05paths\x12!\n" +
+	"\fpath_overlap\x18\x04 \x01(\bR\vpathOverlap\"H\n" +
+	"\x13QueryIntentResponse\x121\n" +
+	"\amatches\x18\x01 \x03(\v2\x17.concord.v1.IntentMatchR\amatches2\x81\x04\n" +
 	"\x13CoordinationService\x129\n" +
 	"\x04Ping\x12\x17.concord.v1.PingRequest\x1a\x18.concord.v1.PingResponse\x12K\n" +
 	"\n" +
 	"RecordRead\x12\x1d.concord.v1.RecordReadRequest\x1a\x1e.concord.v1.RecordReadResponse\x12H\n" +
 	"\tCheckEdit\x12\x1c.concord.v1.CheckEditRequest\x1a\x1d.concord.v1.CheckEditResponse\x12f\n" +
-	"\x13ReconcileFileChange\x12&.concord.v1.ReconcileFileChangeRequest\x1a'.concord.v1.ReconcileFileChangeResponseB7Z5github.com/Kminhas21/concord/gen/concord/v1;concordv1b\x06proto3"
+	"\x13ReconcileFileChange\x12&.concord.v1.ReconcileFileChangeRequest\x1a'.concord.v1.ReconcileFileChangeResponse\x12`\n" +
+	"\x11RegisterPredicted\x12$.concord.v1.RegisterPredictedRequest\x1a%.concord.v1.RegisterPredictedResponse\x12N\n" +
+	"\vQueryIntent\x12\x1e.concord.v1.QueryIntentRequest\x1a\x1f.concord.v1.QueryIntentResponseB7Z5github.com/Kminhas21/concord/gen/concord/v1;concordv1b\x06proto3"
 
 var (
 	file_concord_v1_coordination_proto_rawDescOnce sync.Once
@@ -462,7 +747,7 @@ func file_concord_v1_coordination_proto_rawDescGZIP() []byte {
 	return file_concord_v1_coordination_proto_rawDescData
 }
 
-var file_concord_v1_coordination_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_concord_v1_coordination_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_concord_v1_coordination_proto_goTypes = []any{
 	(*PingRequest)(nil),                 // 0: concord.v1.PingRequest
 	(*PingResponse)(nil),                // 1: concord.v1.PingResponse
@@ -472,21 +757,31 @@ var file_concord_v1_coordination_proto_goTypes = []any{
 	(*CheckEditResponse)(nil),           // 5: concord.v1.CheckEditResponse
 	(*ReconcileFileChangeRequest)(nil),  // 6: concord.v1.ReconcileFileChangeRequest
 	(*ReconcileFileChangeResponse)(nil), // 7: concord.v1.ReconcileFileChangeResponse
+	(*RegisterPredictedRequest)(nil),    // 8: concord.v1.RegisterPredictedRequest
+	(*RegisterPredictedResponse)(nil),   // 9: concord.v1.RegisterPredictedResponse
+	(*QueryIntentRequest)(nil),          // 10: concord.v1.QueryIntentRequest
+	(*IntentMatch)(nil),                 // 11: concord.v1.IntentMatch
+	(*QueryIntentResponse)(nil),         // 12: concord.v1.QueryIntentResponse
 }
 var file_concord_v1_coordination_proto_depIdxs = []int32{
-	0, // 0: concord.v1.CoordinationService.Ping:input_type -> concord.v1.PingRequest
-	2, // 1: concord.v1.CoordinationService.RecordRead:input_type -> concord.v1.RecordReadRequest
-	4, // 2: concord.v1.CoordinationService.CheckEdit:input_type -> concord.v1.CheckEditRequest
-	6, // 3: concord.v1.CoordinationService.ReconcileFileChange:input_type -> concord.v1.ReconcileFileChangeRequest
-	1, // 4: concord.v1.CoordinationService.Ping:output_type -> concord.v1.PingResponse
-	3, // 5: concord.v1.CoordinationService.RecordRead:output_type -> concord.v1.RecordReadResponse
-	5, // 6: concord.v1.CoordinationService.CheckEdit:output_type -> concord.v1.CheckEditResponse
-	7, // 7: concord.v1.CoordinationService.ReconcileFileChange:output_type -> concord.v1.ReconcileFileChangeResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	11, // 0: concord.v1.QueryIntentResponse.matches:type_name -> concord.v1.IntentMatch
+	0,  // 1: concord.v1.CoordinationService.Ping:input_type -> concord.v1.PingRequest
+	2,  // 2: concord.v1.CoordinationService.RecordRead:input_type -> concord.v1.RecordReadRequest
+	4,  // 3: concord.v1.CoordinationService.CheckEdit:input_type -> concord.v1.CheckEditRequest
+	6,  // 4: concord.v1.CoordinationService.ReconcileFileChange:input_type -> concord.v1.ReconcileFileChangeRequest
+	8,  // 5: concord.v1.CoordinationService.RegisterPredicted:input_type -> concord.v1.RegisterPredictedRequest
+	10, // 6: concord.v1.CoordinationService.QueryIntent:input_type -> concord.v1.QueryIntentRequest
+	1,  // 7: concord.v1.CoordinationService.Ping:output_type -> concord.v1.PingResponse
+	3,  // 8: concord.v1.CoordinationService.RecordRead:output_type -> concord.v1.RecordReadResponse
+	5,  // 9: concord.v1.CoordinationService.CheckEdit:output_type -> concord.v1.CheckEditResponse
+	7,  // 10: concord.v1.CoordinationService.ReconcileFileChange:output_type -> concord.v1.ReconcileFileChangeResponse
+	9,  // 11: concord.v1.CoordinationService.RegisterPredicted:output_type -> concord.v1.RegisterPredictedResponse
+	12, // 12: concord.v1.CoordinationService.QueryIntent:output_type -> concord.v1.QueryIntentResponse
+	7,  // [7:13] is the sub-list for method output_type
+	1,  // [1:7] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_concord_v1_coordination_proto_init() }
@@ -500,7 +795,7 @@ func file_concord_v1_coordination_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_concord_v1_coordination_proto_rawDesc), len(file_concord_v1_coordination_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

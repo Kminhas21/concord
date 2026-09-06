@@ -45,6 +45,12 @@ const (
 	// CoordinationServiceReconcileFileChangeProcedure is the fully-qualified name of the
 	// CoordinationService's ReconcileFileChange RPC.
 	CoordinationServiceReconcileFileChangeProcedure = "/concord.v1.CoordinationService/ReconcileFileChange"
+	// CoordinationServiceRegisterPredictedProcedure is the fully-qualified name of the
+	// CoordinationService's RegisterPredicted RPC.
+	CoordinationServiceRegisterPredictedProcedure = "/concord.v1.CoordinationService/RegisterPredicted"
+	// CoordinationServiceQueryIntentProcedure is the fully-qualified name of the CoordinationService's
+	// QueryIntent RPC.
+	CoordinationServiceQueryIntentProcedure = "/concord.v1.CoordinationService/QueryIntent"
 )
 
 // CoordinationServiceClient is a client for the concord.v1.CoordinationService service.
@@ -60,6 +66,13 @@ type CoordinationServiceClient interface {
 	// actor rewrote a path out of band (e.g. a shell command), so the actor is
 	// not falsely blocked on its own change. Other actors are unaffected.
 	ReconcileFileChange(context.Context, *connect.Request[v1.ReconcileFileChangeRequest]) (*connect.Response[v1.ReconcileFileChangeResponse], error)
+	// RegisterPredicted records an actor's predicted footprint once at subagent
+	// start, from the delegation prompt. Advisory only.
+	RegisterPredicted(context.Context, *connect.Request[v1.RegisterPredictedRequest]) (*connect.Response[v1.RegisterPredictedResponse], error)
+	// QueryIntent reports the active intents that may overlap a proposed piece of
+	// work. It never denies: it returns candidates and a literal path-overlap
+	// flag, leaving semantic judgement to the caller.
+	QueryIntent(context.Context, *connect.Request[v1.QueryIntentRequest]) (*connect.Response[v1.QueryIntentResponse], error)
 }
 
 // NewCoordinationServiceClient constructs a client for the concord.v1.CoordinationService service.
@@ -97,6 +110,18 @@ func NewCoordinationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(coordinationServiceMethods.ByName("ReconcileFileChange")),
 			connect.WithClientOptions(opts...),
 		),
+		registerPredicted: connect.NewClient[v1.RegisterPredictedRequest, v1.RegisterPredictedResponse](
+			httpClient,
+			baseURL+CoordinationServiceRegisterPredictedProcedure,
+			connect.WithSchema(coordinationServiceMethods.ByName("RegisterPredicted")),
+			connect.WithClientOptions(opts...),
+		),
+		queryIntent: connect.NewClient[v1.QueryIntentRequest, v1.QueryIntentResponse](
+			httpClient,
+			baseURL+CoordinationServiceQueryIntentProcedure,
+			connect.WithSchema(coordinationServiceMethods.ByName("QueryIntent")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -106,6 +131,8 @@ type coordinationServiceClient struct {
 	recordRead          *connect.Client[v1.RecordReadRequest, v1.RecordReadResponse]
 	checkEdit           *connect.Client[v1.CheckEditRequest, v1.CheckEditResponse]
 	reconcileFileChange *connect.Client[v1.ReconcileFileChangeRequest, v1.ReconcileFileChangeResponse]
+	registerPredicted   *connect.Client[v1.RegisterPredictedRequest, v1.RegisterPredictedResponse]
+	queryIntent         *connect.Client[v1.QueryIntentRequest, v1.QueryIntentResponse]
 }
 
 // Ping calls concord.v1.CoordinationService.Ping.
@@ -128,6 +155,16 @@ func (c *coordinationServiceClient) ReconcileFileChange(ctx context.Context, req
 	return c.reconcileFileChange.CallUnary(ctx, req)
 }
 
+// RegisterPredicted calls concord.v1.CoordinationService.RegisterPredicted.
+func (c *coordinationServiceClient) RegisterPredicted(ctx context.Context, req *connect.Request[v1.RegisterPredictedRequest]) (*connect.Response[v1.RegisterPredictedResponse], error) {
+	return c.registerPredicted.CallUnary(ctx, req)
+}
+
+// QueryIntent calls concord.v1.CoordinationService.QueryIntent.
+func (c *coordinationServiceClient) QueryIntent(ctx context.Context, req *connect.Request[v1.QueryIntentRequest]) (*connect.Response[v1.QueryIntentResponse], error) {
+	return c.queryIntent.CallUnary(ctx, req)
+}
+
 // CoordinationServiceHandler is an implementation of the concord.v1.CoordinationService service.
 type CoordinationServiceHandler interface {
 	// Ping is a liveness probe used to prove the seam end to end.
@@ -141,6 +178,13 @@ type CoordinationServiceHandler interface {
 	// actor rewrote a path out of band (e.g. a shell command), so the actor is
 	// not falsely blocked on its own change. Other actors are unaffected.
 	ReconcileFileChange(context.Context, *connect.Request[v1.ReconcileFileChangeRequest]) (*connect.Response[v1.ReconcileFileChangeResponse], error)
+	// RegisterPredicted records an actor's predicted footprint once at subagent
+	// start, from the delegation prompt. Advisory only.
+	RegisterPredicted(context.Context, *connect.Request[v1.RegisterPredictedRequest]) (*connect.Response[v1.RegisterPredictedResponse], error)
+	// QueryIntent reports the active intents that may overlap a proposed piece of
+	// work. It never denies: it returns candidates and a literal path-overlap
+	// flag, leaving semantic judgement to the caller.
+	QueryIntent(context.Context, *connect.Request[v1.QueryIntentRequest]) (*connect.Response[v1.QueryIntentResponse], error)
 }
 
 // NewCoordinationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -174,6 +218,18 @@ func NewCoordinationServiceHandler(svc CoordinationServiceHandler, opts ...conne
 		connect.WithSchema(coordinationServiceMethods.ByName("ReconcileFileChange")),
 		connect.WithHandlerOptions(opts...),
 	)
+	coordinationServiceRegisterPredictedHandler := connect.NewUnaryHandler(
+		CoordinationServiceRegisterPredictedProcedure,
+		svc.RegisterPredicted,
+		connect.WithSchema(coordinationServiceMethods.ByName("RegisterPredicted")),
+		connect.WithHandlerOptions(opts...),
+	)
+	coordinationServiceQueryIntentHandler := connect.NewUnaryHandler(
+		CoordinationServiceQueryIntentProcedure,
+		svc.QueryIntent,
+		connect.WithSchema(coordinationServiceMethods.ByName("QueryIntent")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/concord.v1.CoordinationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CoordinationServicePingProcedure:
@@ -184,6 +240,10 @@ func NewCoordinationServiceHandler(svc CoordinationServiceHandler, opts ...conne
 			coordinationServiceCheckEditHandler.ServeHTTP(w, r)
 		case CoordinationServiceReconcileFileChangeProcedure:
 			coordinationServiceReconcileFileChangeHandler.ServeHTTP(w, r)
+		case CoordinationServiceRegisterPredictedProcedure:
+			coordinationServiceRegisterPredictedHandler.ServeHTTP(w, r)
+		case CoordinationServiceQueryIntentProcedure:
+			coordinationServiceQueryIntentHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -207,4 +267,12 @@ func (UnimplementedCoordinationServiceHandler) CheckEdit(context.Context, *conne
 
 func (UnimplementedCoordinationServiceHandler) ReconcileFileChange(context.Context, *connect.Request[v1.ReconcileFileChangeRequest]) (*connect.Response[v1.ReconcileFileChangeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.ReconcileFileChange is not implemented"))
+}
+
+func (UnimplementedCoordinationServiceHandler) RegisterPredicted(context.Context, *connect.Request[v1.RegisterPredictedRequest]) (*connect.Response[v1.RegisterPredictedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.RegisterPredicted is not implemented"))
+}
+
+func (UnimplementedCoordinationServiceHandler) QueryIntent(context.Context, *connect.Request[v1.QueryIntentRequest]) (*connect.Response[v1.QueryIntentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.QueryIntent is not implemented"))
 }

@@ -38,7 +38,8 @@ func TestMain(m *testing.M) {
 // server and returns a Connect client for it. This is the seam.
 func newTestClient(t *testing.T) concordv1connect.CoordinationServiceClient {
 	t.Helper()
-	svc := coordination.NewService(store.NewRedisStore(dragonflyAddr))
+	rs := store.NewRedisStore(dragonflyAddr)
+	svc := coordination.NewService(rs, rs)
 	mux := http.NewServeMux()
 	path, handler := concordv1connect.NewCoordinationServiceHandler(svc)
 	mux.Handle(path, handler)
@@ -125,6 +126,86 @@ func TestCheckEditBlocksExistingFileWithNoRecordedRead(t *testing.T) {
 
 	if got.GetAllowed() {
 		t.Fatal("edit allowed on an existing file the actor never read")
+	}
+}
+
+func registerPredicted(t *testing.T, c concordv1connect.CoordinationServiceClient, actor, intent string, paths ...string) {
+	t.Helper()
+	_, err := c.RegisterPredicted(context.Background(), connect.NewRequest(&concordv1.RegisterPredictedRequest{
+		ActorId: actor, IntentText: intent, PredictedPaths: paths,
+	}))
+	if err != nil {
+		t.Fatalf("RegisterPredicted(%s): %v", actor, err)
+	}
+}
+
+func queryIntent(t *testing.T, c concordv1connect.CoordinationServiceClient, intent string, paths ...string) []*concordv1.IntentMatch {
+	t.Helper()
+	resp, err := c.QueryIntent(context.Background(), connect.NewRequest(&concordv1.QueryIntentRequest{
+		IntentText: intent, Paths: paths,
+	}))
+	if err != nil {
+		t.Fatalf("QueryIntent: %v", err)
+	}
+	return resp.Msg.GetMatches()
+}
+
+func findMatch(matches []*concordv1.IntentMatch, actor string) *concordv1.IntentMatch {
+	for _, m := range matches {
+		if m.GetActorId() == actor {
+			return m
+		}
+	}
+	return nil
+}
+
+func TestQueryReportsPathOverlapSameDirectory(t *testing.T) {
+	c := newTestClient(t)
+	registerPredicted(t, c, "agent-overlap", "refactor auth", "t6overlap/auth/login.go")
+
+	// A different file in the same directory must count as a path overlap.
+	matches := queryIntent(t, c, "touch logout", "t6overlap/auth/logout.go")
+
+	m := findMatch(matches, "agent-overlap")
+	if m == nil {
+		t.Fatal("registered agent not returned by QueryIntent")
+	}
+	if !m.GetPathOverlap() {
+		t.Fatalf("expected path overlap for same directory, got false (paths=%v)", m.GetPaths())
+	}
+	if m.GetIntentText() != "refactor auth" {
+		t.Fatalf("intent_text = %q, want %q", m.GetIntentText(), "refactor auth")
+	}
+}
+
+func TestQueryReturnsCandidateWithoutPathOverlap(t *testing.T) {
+	c := newTestClient(t)
+	registerPredicted(t, c, "agent-candidate", "refactor auth", "t6cand/auth/login.go")
+
+	// Different directory: no path overlap, but the intent must still be
+	// returned as a candidate for the caller's semantic judgement.
+	matches := queryIntent(t, c, "work on billing", "t6cand/billing/pay.go")
+
+	m := findMatch(matches, "agent-candidate")
+	if m == nil {
+		t.Fatal("candidate not returned for semantic judgement")
+	}
+	if m.GetPathOverlap() {
+		t.Fatal("unexpected path overlap across different directories")
+	}
+}
+
+func TestQueryNeverDeniesOnFullOverlap(t *testing.T) {
+	c := newTestClient(t)
+	registerPredicted(t, c, "agent-samefile", "edit config", "t6deny/config.go")
+
+	// Even an exact same-file overlap returns a normal response, never an error
+	// or a denial — the registry only informs.
+	matches := queryIntent(t, c, "edit config", "t6deny/config.go")
+
+	m := findMatch(matches, "agent-samefile")
+	if m == nil || !m.GetPathOverlap() {
+		t.Fatal("expected agent-samefile reported with path overlap")
 	}
 }
 

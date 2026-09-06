@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/redis/go-redis/v9"
@@ -60,4 +61,76 @@ func (s *RedisStore) GetReadHash(ctx context.Context, actorID, path string) (str
 		return "", false, err
 	}
 	return v, true, nil
+}
+
+// IntentRecord is an actor's advisory footprint: its predicted scope plus the
+// paths it has actually touched.
+type IntentRecord struct {
+	ActorID        string   `json:"actor_id"`
+	IntentText     string   `json:"intent_text"`
+	PredictedPaths []string `json:"predicted_paths"`
+	ActualPaths    []string `json:"actual_paths"`
+}
+
+// IntentStore persists advisory intent records and enumerates the active ones.
+type IntentStore interface {
+	// PutPredicted writes an actor's predicted footprint, replacing any existing
+	// record for that actor.
+	PutPredicted(ctx context.Context, actorID, intentText string, predictedPaths []string) error
+	// ListIntents returns every active intent record.
+	ListIntents(ctx context.Context) ([]IntentRecord, error)
+}
+
+const intentSetKey = "intents"
+
+func intentKey(actorID string) string { return "intent:" + actorID }
+
+var _ IntentStore = (*RedisStore)(nil)
+
+// PutPredicted stores the predicted footprint and adds the actor to the active
+// set. No TTL yet — expiry arrives with actual-footprint touches (T07).
+func (s *RedisStore) PutPredicted(ctx context.Context, actorID, intentText string, predictedPaths []string) error {
+	rec := IntentRecord{ActorID: actorID, IntentText: intentText, PredictedPaths: predictedPaths}
+	b, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	pipe := s.client.TxPipeline()
+	pipe.Set(ctx, intentKey(actorID), b, 0)
+	pipe.SAdd(ctx, intentSetKey, actorID)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+// ListIntents loads every active intent record. Records whose key has expired
+// but whose id lingers in the set are skipped.
+func (s *RedisStore) ListIntents(ctx context.Context) ([]IntentRecord, error) {
+	ids, err := s.client.SMembers(ctx, intentSetKey).Result()
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, len(ids))
+	for i, id := range ids {
+		keys[i] = intentKey(id)
+	}
+	vals, err := s.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]IntentRecord, 0, len(vals))
+	for _, v := range vals {
+		raw, ok := v.(string)
+		if !ok {
+			continue // key missing/expired
+		}
+		var rec IntentRecord
+		if err := json.Unmarshal([]byte(raw), &rec); err != nil {
+			continue
+		}
+		out = append(out, rec)
+	}
+	return out, nil
 }
