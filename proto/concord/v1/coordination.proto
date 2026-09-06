@@ -9,6 +9,13 @@ option go_package = "github.com/Kminhas21/concord/gen/concord/v1;concordv1";
 service CoordinationService {
   // Ping is a liveness probe used to prove the seam end to end.
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // RecordRead stores the hash an actor observed when it last read a path.
+  rpc RecordRead(RecordReadRequest) returns (RecordReadResponse);
+
+  // CheckEdit decides whether an actor's edit may proceed: it blocks when the
+  // path changed since the actor's recorded read (a stale edit).
+  rpc CheckEdit(CheckEditRequest) returns (CheckEditResponse);
 }
 
 message PingRequest {
@@ -17,4 +24,26 @@ message PingRequest {
 
 message PingResponse {
   string message = 1;
+}
+
+message RecordReadRequest {
+  string actor_id = 1;
+  string path = 2;
+  string hash = 3;
+}
+
+message RecordReadResponse {}
+
+message CheckEditRequest {
+  string actor_id = 1;
+  string path = 2;
+  // current_hash is the file's on-disk hash computed by the hook client just
+  // before the edit. An empty string means the file does not exist on disk.
+  string current_hash = 3;
+}
+
+message CheckEditResponse {
+  bool allowed = 1;
+  // message carries guidance for the actor when the edit is blocked.
+  string message = 2;
 }

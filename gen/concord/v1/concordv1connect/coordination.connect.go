@@ -36,12 +36,23 @@ const (
 	// CoordinationServicePingProcedure is the fully-qualified name of the CoordinationService's Ping
 	// RPC.
 	CoordinationServicePingProcedure = "/concord.v1.CoordinationService/Ping"
+	// CoordinationServiceRecordReadProcedure is the fully-qualified name of the CoordinationService's
+	// RecordRead RPC.
+	CoordinationServiceRecordReadProcedure = "/concord.v1.CoordinationService/RecordRead"
+	// CoordinationServiceCheckEditProcedure is the fully-qualified name of the CoordinationService's
+	// CheckEdit RPC.
+	CoordinationServiceCheckEditProcedure = "/concord.v1.CoordinationService/CheckEdit"
 )
 
 // CoordinationServiceClient is a client for the concord.v1.CoordinationService service.
 type CoordinationServiceClient interface {
 	// Ping is a liveness probe used to prove the seam end to end.
 	Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error)
+	// RecordRead stores the hash an actor observed when it last read a path.
+	RecordRead(context.Context, *connect.Request[v1.RecordReadRequest]) (*connect.Response[v1.RecordReadResponse], error)
+	// CheckEdit decides whether an actor's edit may proceed: it blocks when the
+	// path changed since the actor's recorded read (a stale edit).
+	CheckEdit(context.Context, *connect.Request[v1.CheckEditRequest]) (*connect.Response[v1.CheckEditResponse], error)
 }
 
 // NewCoordinationServiceClient constructs a client for the concord.v1.CoordinationService service.
@@ -61,12 +72,26 @@ func NewCoordinationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(coordinationServiceMethods.ByName("Ping")),
 			connect.WithClientOptions(opts...),
 		),
+		recordRead: connect.NewClient[v1.RecordReadRequest, v1.RecordReadResponse](
+			httpClient,
+			baseURL+CoordinationServiceRecordReadProcedure,
+			connect.WithSchema(coordinationServiceMethods.ByName("RecordRead")),
+			connect.WithClientOptions(opts...),
+		),
+		checkEdit: connect.NewClient[v1.CheckEditRequest, v1.CheckEditResponse](
+			httpClient,
+			baseURL+CoordinationServiceCheckEditProcedure,
+			connect.WithSchema(coordinationServiceMethods.ByName("CheckEdit")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // coordinationServiceClient implements CoordinationServiceClient.
 type coordinationServiceClient struct {
-	ping *connect.Client[v1.PingRequest, v1.PingResponse]
+	ping       *connect.Client[v1.PingRequest, v1.PingResponse]
+	recordRead *connect.Client[v1.RecordReadRequest, v1.RecordReadResponse]
+	checkEdit  *connect.Client[v1.CheckEditRequest, v1.CheckEditResponse]
 }
 
 // Ping calls concord.v1.CoordinationService.Ping.
@@ -74,10 +99,25 @@ func (c *coordinationServiceClient) Ping(ctx context.Context, req *connect.Reque
 	return c.ping.CallUnary(ctx, req)
 }
 
+// RecordRead calls concord.v1.CoordinationService.RecordRead.
+func (c *coordinationServiceClient) RecordRead(ctx context.Context, req *connect.Request[v1.RecordReadRequest]) (*connect.Response[v1.RecordReadResponse], error) {
+	return c.recordRead.CallUnary(ctx, req)
+}
+
+// CheckEdit calls concord.v1.CoordinationService.CheckEdit.
+func (c *coordinationServiceClient) CheckEdit(ctx context.Context, req *connect.Request[v1.CheckEditRequest]) (*connect.Response[v1.CheckEditResponse], error) {
+	return c.checkEdit.CallUnary(ctx, req)
+}
+
 // CoordinationServiceHandler is an implementation of the concord.v1.CoordinationService service.
 type CoordinationServiceHandler interface {
 	// Ping is a liveness probe used to prove the seam end to end.
 	Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error)
+	// RecordRead stores the hash an actor observed when it last read a path.
+	RecordRead(context.Context, *connect.Request[v1.RecordReadRequest]) (*connect.Response[v1.RecordReadResponse], error)
+	// CheckEdit decides whether an actor's edit may proceed: it blocks when the
+	// path changed since the actor's recorded read (a stale edit).
+	CheckEdit(context.Context, *connect.Request[v1.CheckEditRequest]) (*connect.Response[v1.CheckEditResponse], error)
 }
 
 // NewCoordinationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -93,10 +133,26 @@ func NewCoordinationServiceHandler(svc CoordinationServiceHandler, opts ...conne
 		connect.WithSchema(coordinationServiceMethods.ByName("Ping")),
 		connect.WithHandlerOptions(opts...),
 	)
+	coordinationServiceRecordReadHandler := connect.NewUnaryHandler(
+		CoordinationServiceRecordReadProcedure,
+		svc.RecordRead,
+		connect.WithSchema(coordinationServiceMethods.ByName("RecordRead")),
+		connect.WithHandlerOptions(opts...),
+	)
+	coordinationServiceCheckEditHandler := connect.NewUnaryHandler(
+		CoordinationServiceCheckEditProcedure,
+		svc.CheckEdit,
+		connect.WithSchema(coordinationServiceMethods.ByName("CheckEdit")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/concord.v1.CoordinationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CoordinationServicePingProcedure:
 			coordinationServicePingHandler.ServeHTTP(w, r)
+		case CoordinationServiceRecordReadProcedure:
+			coordinationServiceRecordReadHandler.ServeHTTP(w, r)
+		case CoordinationServiceCheckEditProcedure:
+			coordinationServiceCheckEditHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -108,4 +164,12 @@ type UnimplementedCoordinationServiceHandler struct{}
 
 func (UnimplementedCoordinationServiceHandler) Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.Ping is not implemented"))
+}
+
+func (UnimplementedCoordinationServiceHandler) RecordRead(context.Context, *connect.Request[v1.RecordReadRequest]) (*connect.Response[v1.RecordReadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.RecordRead is not implemented"))
+}
+
+func (UnimplementedCoordinationServiceHandler) CheckEdit(context.Context, *connect.Request[v1.CheckEditRequest]) (*connect.Response[v1.CheckEditResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.CheckEdit is not implemented"))
 }

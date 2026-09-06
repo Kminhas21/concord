@@ -79,3 +79,14 @@ Format per entry:
 **Why:** Live-hashing makes every out-of-band write visible to all *other* holders for free (their stored read-hash won't match live disk), so no separate "canonical hash" store or reconciliation is needed for the victim case. Keeping file I/O in the client keeps the daemon a pure state comparator and testable purely through the RPC seam.
 **Consequence:** `ReconcileFileChange(actor_id, path, new_hash)` exists only to advance the *writing* actor's own read-hash after its out-of-band write (case b above), preventing a false self-block.
 **Links:** TICKETS T03/T05; ADR-0002; docs/spikes/filechanged.md.
+
+## 2026-09-06 — T03: CheckEdit rules for the "no recorded read" case
+**Decision:** When an actor has no recorded read of a path, `CheckEdit` allows the edit if `current_hash` is empty (the file does not exist → new-file creation) and blocks it otherwise (an existing file the actor never read has no freshness basis). Found read-hash: allow on exact match, block on mismatch.
+**Why:** Blocking every unrecorded edit would break legitimate file creation via the Write tool; allowing every unrecorded edit would let an actor clobber an existing file it never read. Splitting on `current_hash == ""` distinguishes the two using only what the client already sends — no file I/O in the daemon.
+**Alternatives:** Always block on no-read (rejected — breaks creation); always allow on no-read (rejected — misses the never-read-existing-file case); pass an explicit `file_exists` flag (deferred — empty hash already encodes it).
+**Links:** TICKETS T03; DECISIONS "CheckEdit compares against the live on-disk hash".
+
+## 2026-09-06 — T03: read-hash key layout and no expiry
+**Decision:** Read-hashes live at `readhash:{actor_id}\x1f{path}` (unit-separator between the two fields) with no TTL. The store is exposed as a narrow `ReadHashStore` interface; `RedisStore` is the go-redis implementation.
+**Why:** The unit separator makes actor/path keys collision-proof regardless of contents. No TTL matches ADR-0002 (the version check holds nothing on a timer); a leftover read-hash for a dead actor is harmless. A narrow interface keeps the service depending on behaviour, not on go-redis, and keeps tests at the RPC seam.
+**Links:** TICKETS T03; ADR-0002.

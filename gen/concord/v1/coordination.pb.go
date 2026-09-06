@@ -109,6 +109,217 @@ func (x *PingResponse) GetMessage() string {
 	return ""
 }
 
+type RecordReadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ActorId       string                 `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Hash          string                 `protobuf:"bytes,3,opt,name=hash,proto3" json:"hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordReadRequest) Reset() {
+	*x = RecordReadRequest{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordReadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordReadRequest) ProtoMessage() {}
+
+func (x *RecordReadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordReadRequest.ProtoReflect.Descriptor instead.
+func (*RecordReadRequest) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RecordReadRequest) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *RecordReadRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *RecordReadRequest) GetHash() string {
+	if x != nil {
+		return x.Hash
+	}
+	return ""
+}
+
+type RecordReadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordReadResponse) Reset() {
+	*x = RecordReadResponse{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordReadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordReadResponse) ProtoMessage() {}
+
+func (x *RecordReadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordReadResponse.ProtoReflect.Descriptor instead.
+func (*RecordReadResponse) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{3}
+}
+
+type CheckEditRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	ActorId string                 `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	Path    string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// current_hash is the file's on-disk hash computed by the hook client just
+	// before the edit. An empty string means the file does not exist on disk.
+	CurrentHash   string `protobuf:"bytes,3,opt,name=current_hash,json=currentHash,proto3" json:"current_hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckEditRequest) Reset() {
+	*x = CheckEditRequest{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckEditRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckEditRequest) ProtoMessage() {}
+
+func (x *CheckEditRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckEditRequest.ProtoReflect.Descriptor instead.
+func (*CheckEditRequest) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CheckEditRequest) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *CheckEditRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *CheckEditRequest) GetCurrentHash() string {
+	if x != nil {
+		return x.CurrentHash
+	}
+	return ""
+}
+
+type CheckEditResponse struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Allowed bool                   `protobuf:"varint,1,opt,name=allowed,proto3" json:"allowed,omitempty"`
+	// message carries guidance for the actor when the edit is blocked.
+	Message       string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckEditResponse) Reset() {
+	*x = CheckEditResponse{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckEditResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckEditResponse) ProtoMessage() {}
+
+func (x *CheckEditResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckEditResponse.ProtoReflect.Descriptor instead.
+func (*CheckEditResponse) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CheckEditResponse) GetAllowed() bool {
+	if x != nil {
+		return x.Allowed
+	}
+	return false
+}
+
+func (x *CheckEditResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 var File_concord_v1_coordination_proto protoreflect.FileDescriptor
 
 const file_concord_v1_coordination_proto_rawDesc = "" +
@@ -118,9 +329,24 @@ const file_concord_v1_coordination_proto_rawDesc = "" +
 	"\vPingRequest\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\"(\n" +
 	"\fPingResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2P\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"V\n" +
+	"\x11RecordReadRequest\x12\x19\n" +
+	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +
+	"\x04hash\x18\x03 \x01(\tR\x04hash\"\x14\n" +
+	"\x12RecordReadResponse\"d\n" +
+	"\x10CheckEditRequest\x12\x19\n" +
+	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12!\n" +
+	"\fcurrent_hash\x18\x03 \x01(\tR\vcurrentHash\"G\n" +
+	"\x11CheckEditResponse\x12\x18\n" +
+	"\aallowed\x18\x01 \x01(\bR\aallowed\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\xe7\x01\n" +
 	"\x13CoordinationService\x129\n" +
-	"\x04Ping\x12\x17.concord.v1.PingRequest\x1a\x18.concord.v1.PingResponseB7Z5github.com/Kminhas21/concord/gen/concord/v1;concordv1b\x06proto3"
+	"\x04Ping\x12\x17.concord.v1.PingRequest\x1a\x18.concord.v1.PingResponse\x12K\n" +
+	"\n" +
+	"RecordRead\x12\x1d.concord.v1.RecordReadRequest\x1a\x1e.concord.v1.RecordReadResponse\x12H\n" +
+	"\tCheckEdit\x12\x1c.concord.v1.CheckEditRequest\x1a\x1d.concord.v1.CheckEditResponseB7Z5github.com/Kminhas21/concord/gen/concord/v1;concordv1b\x06proto3"
 
 var (
 	file_concord_v1_coordination_proto_rawDescOnce sync.Once
@@ -134,16 +360,24 @@ func file_concord_v1_coordination_proto_rawDescGZIP() []byte {
 	return file_concord_v1_coordination_proto_rawDescData
 }
 
-var file_concord_v1_coordination_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_concord_v1_coordination_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_concord_v1_coordination_proto_goTypes = []any{
-	(*PingRequest)(nil),  // 0: concord.v1.PingRequest
-	(*PingResponse)(nil), // 1: concord.v1.PingResponse
+	(*PingRequest)(nil),        // 0: concord.v1.PingRequest
+	(*PingResponse)(nil),       // 1: concord.v1.PingResponse
+	(*RecordReadRequest)(nil),  // 2: concord.v1.RecordReadRequest
+	(*RecordReadResponse)(nil), // 3: concord.v1.RecordReadResponse
+	(*CheckEditRequest)(nil),   // 4: concord.v1.CheckEditRequest
+	(*CheckEditResponse)(nil),  // 5: concord.v1.CheckEditResponse
 }
 var file_concord_v1_coordination_proto_depIdxs = []int32{
 	0, // 0: concord.v1.CoordinationService.Ping:input_type -> concord.v1.PingRequest
-	1, // 1: concord.v1.CoordinationService.Ping:output_type -> concord.v1.PingResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
+	2, // 1: concord.v1.CoordinationService.RecordRead:input_type -> concord.v1.RecordReadRequest
+	4, // 2: concord.v1.CoordinationService.CheckEdit:input_type -> concord.v1.CheckEditRequest
+	1, // 3: concord.v1.CoordinationService.Ping:output_type -> concord.v1.PingResponse
+	3, // 4: concord.v1.CoordinationService.RecordRead:output_type -> concord.v1.RecordReadResponse
+	5, // 5: concord.v1.CoordinationService.CheckEdit:output_type -> concord.v1.CheckEditResponse
+	3, // [3:6] is the sub-list for method output_type
+	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -160,7 +394,7 @@ func file_concord_v1_coordination_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_concord_v1_coordination_proto_rawDesc), len(file_concord_v1_coordination_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
