@@ -127,3 +127,19 @@ func TestCheckEditBlocksExistingFileWithNoRecordedRead(t *testing.T) {
 		t.Fatal("edit allowed on an existing file the actor never read")
 	}
 }
+
+func TestCheckEditIsolatedPerActor(t *testing.T) {
+	c := newTestClient(t)
+
+	// Actor A reads shared.go and is allowed to edit it while unchanged.
+	recordRead(t, c, "actorA", "shared.go", "hash-1")
+	if got := checkEdit(t, c, "actorA", "shared.go", "hash-1"); !got.GetAllowed() {
+		t.Fatalf("actor A blocked on its own unchanged read: %q", got.GetMessage())
+	}
+
+	// Actor B never read shared.go. Even presenting the identical current
+	// content, B must be blocked: it cannot ride on actor A's read.
+	if got := checkEdit(t, c, "actorB", "shared.go", "hash-1"); got.GetAllowed() {
+		t.Fatal("actor B's edit was allowed on actor A's read; freshness is not isolated per actor")
+	}
+}
