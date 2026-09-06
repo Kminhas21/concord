@@ -49,14 +49,15 @@ Legend: every ticket is `ready-for-agent`.
 - [ ] Actor A's `RecordRead` on a path does not satisfy actor B's `CheckEdit` on that path.
 - [ ] An actor's own prior read does satisfy its own later `CheckEdit`.
 
-## T05 — Version check: out-of-band reconciliation (`ReconcileFileChange`)
+## T05 — Version check: reconcile an actor's own out-of-band writes (`ReconcileFileChange`)
 
-**What to build:** Closing the Bash hole at the seam — a shell or editor write that concord observes via `FileChanged` makes a previously-valid holder's next edit block.
+**What to build:** Prevent a false self-block: when an actor rewrites files via a shell command, that actor's own next edit should still be allowed, while everyone else stays protected. (Per the T02 spike, the *victim* case is already covered because `CheckEdit` compares against the live on-disk hash; this ticket handles only the writer's own read-hash.)
 
-**Blocked by:** T03 (informed by T02).
+**Blocked by:** T03. (T02 spike settled the mechanism: a synchronous `PostToolUse` `Bash|PowerShell` git-status sweep drives this, not `FileChanged`.)
 
-- [ ] `ReconcileFileChange(path, new_hash)` updates the canonical current hash for a path.
-- [ ] After reconciliation, a holder whose read-hash previously matched is now blocked by `CheckEdit`.
+- [ ] `ReconcileFileChange(actor_id, path, new_hash)` advances that actor's stored read-hash for the path.
+- [ ] After reconciliation, the writing actor's `CheckEdit` on that path is allowed again.
+- [ ] Another actor's stored read-hash is unaffected — they remain blocked against the new content.
 
 ## T06 — Intent registry: `RegisterPredicted` + `QueryIntent`
 
@@ -92,9 +93,9 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T03, T05, T06, T07.
 
-- [ ] `concord-hook` subcommands (`pre-tool-use`, `post-tool-use`, `subagent-start`, `file-changed`) read hook JSON on stdin, make one RPC, and set the correct exit code (exit 2 to block on stale edits).
+- [ ] `concord-hook` subcommands read hook JSON on stdin, make one RPC, set the correct exit code (exit 2 to block on stale edits): `pre-tool-use` (live-hash the target file → `CheckEdit`), `post-tool-use` (`AppendActual`; and for `Bash|PowerShell`, run `git status --porcelain` → `ReconcileFileChange` per changed file), `subagent-start` (`RegisterPredicted`).
 - [ ] Actor id is resolved as `agent_id ?? session_id` from the hook payload.
-- [ ] A sample `settings.json` wires the four hooks; a note documents that the intent read path is an orchestrator query, not a hook.
+- [ ] A sample `settings.json` wires the hooks (no `FileChanged` — see the T02 spike); a note documents that the intent read path is an orchestrator query, not a hook.
 
 ## T10 — Daemon operationalization + README
 

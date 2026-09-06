@@ -66,3 +66,16 @@ Format per entry:
 **Decision:** `* text=auto eol=lf` plus explicit `*.go/*.proto/*.md eol=lf`.
 **Why:** Generated code is committed; the CI gate runs `buf generate` then `git diff --exit-code`. Without normalization, a Windows CRLF checkout would diff against Linux LF codegen and fail the gate spuriously.
 **Links:** TICKETS T01; the green gate.
+
+## 2026-09-06 — T02 spike: do not build correctness on `FileChanged`
+**Decision:** Reject `FileChanged` as the Bash-hole mechanism. Reconcile out-of-band writes two ways instead: (a) `CheckEdit` compares against the file's live on-disk hash, and (b) a synchronous `PostToolUse` `Bash|PowerShell` hook runs `git status --porcelain` and calls `ReconcileFileChange` for the writing actor.
+**Why:** `FileChanged` fires on Bash/external writes (good) but is filename-scoped (not "any file"), its input schema for the changed path is unconfirmed, and — decisively — its timing is unstated and async hooks exist, so it can race the next `CheckEdit`. An unbounded race is disqualifying for a correctness layer. The git-status sweep is synchronous (PostToolUse completes before the next tool call) and needs no watch list.
+**Alternatives:** `FileChanged`-driven reconciliation (rejected: async race, filename scope); parsing shell commands for paths (rejected in SPEC: fragile).
+**Residual (accepted):** non-git dirs get no sweep → an actor's own shell writes there may cause a false block (efficiency, not correctness). Anything neither hook sees stays outside the guarantee, as SPEC states.
+**Links:** docs/spikes/filechanged.md; TICKETS T05/T09; SPEC "The guarantee".
+
+## 2026-09-06 — T03 design: `CheckEdit` compares against the live on-disk hash
+**Decision:** The `concord-hook` client computes the target file's current SHA-256 from disk immediately before calling `CheckEdit(actor_id, path, current_hash)`; the daemon only compares `current_hash` to the actor's stored read-hash. The daemon never reads files.
+**Why:** Live-hashing makes every out-of-band write visible to all *other* holders for free (their stored read-hash won't match live disk), so no separate "canonical hash" store or reconciliation is needed for the victim case. Keeping file I/O in the client keeps the daemon a pure state comparator and testable purely through the RPC seam.
+**Consequence:** `ReconcileFileChange(actor_id, path, new_hash)` exists only to advance the *writing* actor's own read-hash after its out-of-band write (case b above), preventing a false self-block.
+**Links:** TICKETS T03/T05; ADR-0002; docs/spikes/filechanged.md.
