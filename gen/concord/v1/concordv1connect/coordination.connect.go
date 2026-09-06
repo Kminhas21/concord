@@ -42,6 +42,9 @@ const (
 	// CoordinationServiceCheckEditProcedure is the fully-qualified name of the CoordinationService's
 	// CheckEdit RPC.
 	CoordinationServiceCheckEditProcedure = "/concord.v1.CoordinationService/CheckEdit"
+	// CoordinationServiceReconcileFileChangeProcedure is the fully-qualified name of the
+	// CoordinationService's ReconcileFileChange RPC.
+	CoordinationServiceReconcileFileChangeProcedure = "/concord.v1.CoordinationService/ReconcileFileChange"
 )
 
 // CoordinationServiceClient is a client for the concord.v1.CoordinationService service.
@@ -53,6 +56,10 @@ type CoordinationServiceClient interface {
 	// CheckEdit decides whether an actor's edit may proceed: it blocks when the
 	// path changed since the actor's recorded read (a stale edit).
 	CheckEdit(context.Context, *connect.Request[v1.CheckEditRequest]) (*connect.Response[v1.CheckEditResponse], error)
+	// ReconcileFileChange advances the calling actor's own read-hash after that
+	// actor rewrote a path out of band (e.g. a shell command), so the actor is
+	// not falsely blocked on its own change. Other actors are unaffected.
+	ReconcileFileChange(context.Context, *connect.Request[v1.ReconcileFileChangeRequest]) (*connect.Response[v1.ReconcileFileChangeResponse], error)
 }
 
 // NewCoordinationServiceClient constructs a client for the concord.v1.CoordinationService service.
@@ -84,14 +91,21 @@ func NewCoordinationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(coordinationServiceMethods.ByName("CheckEdit")),
 			connect.WithClientOptions(opts...),
 		),
+		reconcileFileChange: connect.NewClient[v1.ReconcileFileChangeRequest, v1.ReconcileFileChangeResponse](
+			httpClient,
+			baseURL+CoordinationServiceReconcileFileChangeProcedure,
+			connect.WithSchema(coordinationServiceMethods.ByName("ReconcileFileChange")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // coordinationServiceClient implements CoordinationServiceClient.
 type coordinationServiceClient struct {
-	ping       *connect.Client[v1.PingRequest, v1.PingResponse]
-	recordRead *connect.Client[v1.RecordReadRequest, v1.RecordReadResponse]
-	checkEdit  *connect.Client[v1.CheckEditRequest, v1.CheckEditResponse]
+	ping                *connect.Client[v1.PingRequest, v1.PingResponse]
+	recordRead          *connect.Client[v1.RecordReadRequest, v1.RecordReadResponse]
+	checkEdit           *connect.Client[v1.CheckEditRequest, v1.CheckEditResponse]
+	reconcileFileChange *connect.Client[v1.ReconcileFileChangeRequest, v1.ReconcileFileChangeResponse]
 }
 
 // Ping calls concord.v1.CoordinationService.Ping.
@@ -109,6 +123,11 @@ func (c *coordinationServiceClient) CheckEdit(ctx context.Context, req *connect.
 	return c.checkEdit.CallUnary(ctx, req)
 }
 
+// ReconcileFileChange calls concord.v1.CoordinationService.ReconcileFileChange.
+func (c *coordinationServiceClient) ReconcileFileChange(ctx context.Context, req *connect.Request[v1.ReconcileFileChangeRequest]) (*connect.Response[v1.ReconcileFileChangeResponse], error) {
+	return c.reconcileFileChange.CallUnary(ctx, req)
+}
+
 // CoordinationServiceHandler is an implementation of the concord.v1.CoordinationService service.
 type CoordinationServiceHandler interface {
 	// Ping is a liveness probe used to prove the seam end to end.
@@ -118,6 +137,10 @@ type CoordinationServiceHandler interface {
 	// CheckEdit decides whether an actor's edit may proceed: it blocks when the
 	// path changed since the actor's recorded read (a stale edit).
 	CheckEdit(context.Context, *connect.Request[v1.CheckEditRequest]) (*connect.Response[v1.CheckEditResponse], error)
+	// ReconcileFileChange advances the calling actor's own read-hash after that
+	// actor rewrote a path out of band (e.g. a shell command), so the actor is
+	// not falsely blocked on its own change. Other actors are unaffected.
+	ReconcileFileChange(context.Context, *connect.Request[v1.ReconcileFileChangeRequest]) (*connect.Response[v1.ReconcileFileChangeResponse], error)
 }
 
 // NewCoordinationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -145,6 +168,12 @@ func NewCoordinationServiceHandler(svc CoordinationServiceHandler, opts ...conne
 		connect.WithSchema(coordinationServiceMethods.ByName("CheckEdit")),
 		connect.WithHandlerOptions(opts...),
 	)
+	coordinationServiceReconcileFileChangeHandler := connect.NewUnaryHandler(
+		CoordinationServiceReconcileFileChangeProcedure,
+		svc.ReconcileFileChange,
+		connect.WithSchema(coordinationServiceMethods.ByName("ReconcileFileChange")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/concord.v1.CoordinationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CoordinationServicePingProcedure:
@@ -153,6 +182,8 @@ func NewCoordinationServiceHandler(svc CoordinationServiceHandler, opts ...conne
 			coordinationServiceRecordReadHandler.ServeHTTP(w, r)
 		case CoordinationServiceCheckEditProcedure:
 			coordinationServiceCheckEditHandler.ServeHTTP(w, r)
+		case CoordinationServiceReconcileFileChangeProcedure:
+			coordinationServiceReconcileFileChangeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -172,4 +203,8 @@ func (UnimplementedCoordinationServiceHandler) RecordRead(context.Context, *conn
 
 func (UnimplementedCoordinationServiceHandler) CheckEdit(context.Context, *connect.Request[v1.CheckEditRequest]) (*connect.Response[v1.CheckEditResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.CheckEdit is not implemented"))
+}
+
+func (UnimplementedCoordinationServiceHandler) ReconcileFileChange(context.Context, *connect.Request[v1.ReconcileFileChangeRequest]) (*connect.Response[v1.ReconcileFileChangeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.ReconcileFileChange is not implemented"))
 }

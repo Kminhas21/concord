@@ -90,3 +90,9 @@ Format per entry:
 **Decision:** Read-hashes live at `readhash:{actor_id}\x1f{path}` (unit-separator between the two fields) with no TTL. The store is exposed as a narrow `ReadHashStore` interface; `RedisStore` is the go-redis implementation.
 **Why:** The unit separator makes actor/path keys collision-proof regardless of contents. No TTL matches ADR-0002 (the version check holds nothing on a timer); a leftover read-hash for a dead actor is harmless. A narrow interface keeps the service depending on behaviour, not on go-redis, and keeps tests at the RPC seam.
 **Links:** TICKETS T03; ADR-0002.
+
+## 2026-09-06 — T05: ReconcileFileChange is a distinct RPC, actor-scoped
+**Decision:** `ReconcileFileChange(actor_id, path, new_hash)` is its own RPC even though it currently just advances the calling actor's read-hash (same store write as `RecordRead`). It touches only that actor's record.
+**Why:** Its meaning and driver differ from a tool Read — it is fired by the `PostToolUse` git-status sweep after a shell write (T09), not by a Read tool. Keeping it separate keeps the contract self-documenting and leaves room for reconcile-only behaviour later (e.g. only-if-record-exists) without overloading RecordRead.
+**Alternatives:** Merge into RecordRead (rejected — conflates two callers/meanings).
+**Links:** TICKETS T05/T09; docs/spikes/filechanged.md.

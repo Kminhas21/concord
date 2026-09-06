@@ -128,6 +128,50 @@ func TestCheckEditBlocksExistingFileWithNoRecordedRead(t *testing.T) {
 	}
 }
 
+func reconcile(t *testing.T, c concordv1connect.CoordinationServiceClient, actor, path, newHash string) {
+	t.Helper()
+	_, err := c.ReconcileFileChange(context.Background(), connect.NewRequest(&concordv1.ReconcileFileChangeRequest{
+		ActorId: actor, Path: path, NewHash: newHash,
+	}))
+	if err != nil {
+		t.Fatalf("ReconcileFileChange(%s,%s): %v", actor, path, err)
+	}
+}
+
+func TestReconcileAllowsWritingActorAfterOwnChange(t *testing.T) {
+	c := newTestClient(t)
+	recordRead(t, c, "writer", "b.go", "hash-1")
+
+	// The writer would be blocked on hash-2 (its own out-of-band shell write)...
+	if got := checkEdit(t, c, "writer", "b.go", "hash-2"); got.GetAllowed() {
+		t.Fatal("precondition failed: writer not blocked before reconcile")
+	}
+
+	// ...until the change is reconciled to the writer's own read-hash.
+	reconcile(t, c, "writer", "b.go", "hash-2")
+
+	if got := checkEdit(t, c, "writer", "b.go", "hash-2"); !got.GetAllowed() {
+		t.Fatalf("writer still blocked after reconciling its own change: %q", got.GetMessage())
+	}
+}
+
+func TestReconcileDoesNotAffectOtherActors(t *testing.T) {
+	c := newTestClient(t)
+	recordRead(t, c, "mover", "c.go", "hash-1")
+	recordRead(t, c, "bystander", "c.go", "hash-1")
+
+	// mover rewrites c.go out of band and reconciles its own read-hash.
+	reconcile(t, c, "mover", "c.go", "hash-2")
+
+	if got := checkEdit(t, c, "mover", "c.go", "hash-2"); !got.GetAllowed() {
+		t.Fatalf("mover blocked after reconciling its own change: %q", got.GetMessage())
+	}
+	// bystander still holds the old read-hash and must be blocked on the new content.
+	if got := checkEdit(t, c, "bystander", "c.go", "hash-2"); got.GetAllowed() {
+		t.Fatal("bystander allowed on new content; reconcile leaked across actors")
+	}
+}
+
 func TestCheckEditIsolatedPerActor(t *testing.T) {
 	c := newTestClient(t)
 

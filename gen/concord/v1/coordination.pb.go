@@ -320,6 +320,102 @@ func (x *CheckEditResponse) GetMessage() string {
 	return ""
 }
 
+type ReconcileFileChangeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ActorId       string                 `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	NewHash       string                 `protobuf:"bytes,3,opt,name=new_hash,json=newHash,proto3" json:"new_hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReconcileFileChangeRequest) Reset() {
+	*x = ReconcileFileChangeRequest{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReconcileFileChangeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReconcileFileChangeRequest) ProtoMessage() {}
+
+func (x *ReconcileFileChangeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReconcileFileChangeRequest.ProtoReflect.Descriptor instead.
+func (*ReconcileFileChangeRequest) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ReconcileFileChangeRequest) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *ReconcileFileChangeRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *ReconcileFileChangeRequest) GetNewHash() string {
+	if x != nil {
+		return x.NewHash
+	}
+	return ""
+}
+
+type ReconcileFileChangeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReconcileFileChangeResponse) Reset() {
+	*x = ReconcileFileChangeResponse{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReconcileFileChangeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReconcileFileChangeResponse) ProtoMessage() {}
+
+func (x *ReconcileFileChangeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReconcileFileChangeResponse.ProtoReflect.Descriptor instead.
+func (*ReconcileFileChangeResponse) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{7}
+}
+
 var File_concord_v1_coordination_proto protoreflect.FileDescriptor
 
 const file_concord_v1_coordination_proto_rawDesc = "" +
@@ -341,12 +437,18 @@ const file_concord_v1_coordination_proto_rawDesc = "" +
 	"\fcurrent_hash\x18\x03 \x01(\tR\vcurrentHash\"G\n" +
 	"\x11CheckEditResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage2\xe7\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"f\n" +
+	"\x1aReconcileFileChangeRequest\x12\x19\n" +
+	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x19\n" +
+	"\bnew_hash\x18\x03 \x01(\tR\anewHash\"\x1d\n" +
+	"\x1bReconcileFileChangeResponse2\xcf\x02\n" +
 	"\x13CoordinationService\x129\n" +
 	"\x04Ping\x12\x17.concord.v1.PingRequest\x1a\x18.concord.v1.PingResponse\x12K\n" +
 	"\n" +
 	"RecordRead\x12\x1d.concord.v1.RecordReadRequest\x1a\x1e.concord.v1.RecordReadResponse\x12H\n" +
-	"\tCheckEdit\x12\x1c.concord.v1.CheckEditRequest\x1a\x1d.concord.v1.CheckEditResponseB7Z5github.com/Kminhas21/concord/gen/concord/v1;concordv1b\x06proto3"
+	"\tCheckEdit\x12\x1c.concord.v1.CheckEditRequest\x1a\x1d.concord.v1.CheckEditResponse\x12f\n" +
+	"\x13ReconcileFileChange\x12&.concord.v1.ReconcileFileChangeRequest\x1a'.concord.v1.ReconcileFileChangeResponseB7Z5github.com/Kminhas21/concord/gen/concord/v1;concordv1b\x06proto3"
 
 var (
 	file_concord_v1_coordination_proto_rawDescOnce sync.Once
@@ -360,24 +462,28 @@ func file_concord_v1_coordination_proto_rawDescGZIP() []byte {
 	return file_concord_v1_coordination_proto_rawDescData
 }
 
-var file_concord_v1_coordination_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_concord_v1_coordination_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_concord_v1_coordination_proto_goTypes = []any{
-	(*PingRequest)(nil),        // 0: concord.v1.PingRequest
-	(*PingResponse)(nil),       // 1: concord.v1.PingResponse
-	(*RecordReadRequest)(nil),  // 2: concord.v1.RecordReadRequest
-	(*RecordReadResponse)(nil), // 3: concord.v1.RecordReadResponse
-	(*CheckEditRequest)(nil),   // 4: concord.v1.CheckEditRequest
-	(*CheckEditResponse)(nil),  // 5: concord.v1.CheckEditResponse
+	(*PingRequest)(nil),                 // 0: concord.v1.PingRequest
+	(*PingResponse)(nil),                // 1: concord.v1.PingResponse
+	(*RecordReadRequest)(nil),           // 2: concord.v1.RecordReadRequest
+	(*RecordReadResponse)(nil),          // 3: concord.v1.RecordReadResponse
+	(*CheckEditRequest)(nil),            // 4: concord.v1.CheckEditRequest
+	(*CheckEditResponse)(nil),           // 5: concord.v1.CheckEditResponse
+	(*ReconcileFileChangeRequest)(nil),  // 6: concord.v1.ReconcileFileChangeRequest
+	(*ReconcileFileChangeResponse)(nil), // 7: concord.v1.ReconcileFileChangeResponse
 }
 var file_concord_v1_coordination_proto_depIdxs = []int32{
 	0, // 0: concord.v1.CoordinationService.Ping:input_type -> concord.v1.PingRequest
 	2, // 1: concord.v1.CoordinationService.RecordRead:input_type -> concord.v1.RecordReadRequest
 	4, // 2: concord.v1.CoordinationService.CheckEdit:input_type -> concord.v1.CheckEditRequest
-	1, // 3: concord.v1.CoordinationService.Ping:output_type -> concord.v1.PingResponse
-	3, // 4: concord.v1.CoordinationService.RecordRead:output_type -> concord.v1.RecordReadResponse
-	5, // 5: concord.v1.CoordinationService.CheckEdit:output_type -> concord.v1.CheckEditResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
+	6, // 3: concord.v1.CoordinationService.ReconcileFileChange:input_type -> concord.v1.ReconcileFileChangeRequest
+	1, // 4: concord.v1.CoordinationService.Ping:output_type -> concord.v1.PingResponse
+	3, // 5: concord.v1.CoordinationService.RecordRead:output_type -> concord.v1.RecordReadResponse
+	5, // 6: concord.v1.CoordinationService.CheckEdit:output_type -> concord.v1.CheckEditResponse
+	7, // 7: concord.v1.CoordinationService.ReconcileFileChange:output_type -> concord.v1.ReconcileFileChangeResponse
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -394,7 +500,7 @@ func file_concord_v1_coordination_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_concord_v1_coordination_proto_rawDesc), len(file_concord_v1_coordination_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

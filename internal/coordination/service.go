@@ -39,6 +39,18 @@ func (s *Service) RecordRead(ctx context.Context, req *connect.Request[concordv1
 	return connect.NewResponse(&concordv1.RecordReadResponse{}), nil
 }
 
+// ReconcileFileChange advances the calling actor's own read-hash for a path it
+// rewrote out of band, so that actor is not falsely blocked on its own change.
+// It touches only this actor's record; other actors keep their read-hashes and
+// stay protected against the new content.
+func (s *Service) ReconcileFileChange(ctx context.Context, req *connect.Request[concordv1.ReconcileFileChangeRequest]) (*connect.Response[concordv1.ReconcileFileChangeResponse], error) {
+	m := req.Msg
+	if err := s.readHashes.PutReadHash(ctx, m.GetActorId(), m.GetPath(), m.GetNewHash()); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&concordv1.ReconcileFileChangeResponse{}), nil
+}
+
 // CheckEdit blocks a stale edit: one whose target changed since the actor's
 // recorded read. It never reads the file itself — the caller supplies the
 // current on-disk hash (empty when the file does not exist).

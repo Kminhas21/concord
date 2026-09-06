@@ -16,6 +16,11 @@ service CoordinationService {
   // CheckEdit decides whether an actor's edit may proceed: it blocks when the
   // path changed since the actor's recorded read (a stale edit).
   rpc CheckEdit(CheckEditRequest) returns (CheckEditResponse);
+
+  // ReconcileFileChange advances the calling actor's own read-hash after that
+  // actor rewrote a path out of band (e.g. a shell command), so the actor is
+  // not falsely blocked on its own change. Other actors are unaffected.
+  rpc ReconcileFileChange(ReconcileFileChangeRequest) returns (ReconcileFileChangeResponse);
 }
 
 message PingRequest {
@@ -47,3 +52,11 @@ message CheckEditResponse {
   // message carries guidance for the actor when the edit is blocked.
   string message = 2;
 }
+
+message ReconcileFileChangeRequest {
+  string actor_id = 1;
+  string path = 2;
+  string new_hash = 3;
+}
+
+message ReconcileFileChangeResponse {}
