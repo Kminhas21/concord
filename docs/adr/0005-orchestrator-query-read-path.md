@@ -1,0 +1,3 @@
+# Intent is delivered by orchestrator query, not by injecting context at subagent start
+
+Before delegating, the orchestrator queries the intent registry and folds the answer ("who is already doing this") into the delegation prompt. We would have preferred to inject that context automatically at subagent start, but a capability check found that the `SubagentStart` hook does not support `hookSpecificOutput.additionalContext` the way `SessionStart` and `UserPromptSubmit` do — hook-based delivery into a subagent is not possible. This is surprising enough to record: a future reader will ask why the read path runs through the orchestrator instead of a hook, and the answer is a platform limitation, not a preference.

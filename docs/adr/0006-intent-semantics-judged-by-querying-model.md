@@ -1,0 +1,3 @@
+# Semantic intent matching is judged by the querying model, not embeddings
+
+Path overlap is a literal set-intersection over path tokens in Dragonfly. For the *semantic* half of "is anyone already doing this?", concord returns the candidate intent strings to the querying orchestrator and lets the model judge overlap in context — it does not embed intents or run a vector search. We rejected an embedding pipeline because Dragonfly is not a vector store, the advisory layer is exactly the ephemeral thing whose scale does not justify new infrastructure, and an in-context judgement needs no similarity threshold to tune. This deliberately dissolves the "match threshold" question rather than answering it.

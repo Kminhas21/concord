@@ -1,0 +1,3 @@
+# Two independent coordination layers, not one mechanism
+
+concord splits coordination into a mandatory blocking **version check** (correctness) and an advisory non-blocking **intent registry** (dedup), each with its own job. We rejected a single unified mechanism because a scenario walk showed the two jobs are in tension: a conflict mechanism must deny, a dedup mechanism must inform, and one thing cannot do both without producing false denials. In the walk, coarse claims stayed silent on the only contended file while the version check caught it with no false positives — evidence the layers must be separate.
