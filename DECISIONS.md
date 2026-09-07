@@ -170,3 +170,9 @@ Format per entry:
 **Why:** SPEC user story 16 / CONTEXT ("reads only in exploration mode") require read footprint for exploration dedup, but only for opted-in agents. The code review found this slipped (no ticket). An env var is the available opt-in surface: Claude Code hook config is global, so there is no per-actor hook flag — an orchestrator sets `CONCORD_RECORD_READS` in the environment of an exploration run. Verified live: a Read with the flag set appears in QueryIntent; without it, it does not.
 **Alternatives:** A per-actor server-side mode (rejected — the actor's mode isn't known at read time without extra registration); always recording reads (rejected — the measured hot path is fine but it needlessly bloats footprint for the common refactor case).
 **Links:** TICKETS T11; SPEC user story 16; internal/hook.RecordReads; cmd/concord-hook.
+
+## 2026-09-07 — Bug A fix: actual footprint is a Redis set, so appends are atomic
+**Decision:** Actual paths now live in a per-actor Redis **set** (`intent:{actor}:actual`, `SADD`), separate from the predicted JSON doc (`intent:{actor}`). `ListIntents` reads both (GET + SMEMBERS in one pipeline) and combines them; the intent TTL is refreshed on both keys on every write.
+**Why (diagnosis):** the old `AppendActual` did GET-json → append-in-Go → SET-json; concurrent touches on one actor raced (last-writer-wins). The stress harness reproduced it deterministically — 100 concurrent appends kept **3 of 100** paths. `SADD` is atomic and set-valued, so concurrent appends neither race nor duplicate. Confirmed: the regression test (`TestAppendActualIsAtomicUnderConcurrency`, 50/50) and the stress probe (100/100) both pass.
+**Consequence:** the stored JSON doc no longer carries actual paths. A subagent's own calls are serial, but subagents under one session interleave — the real contended case.
+**Links:** docs/testing/stress-findings.md (A); internal/store/store.go; TICKETS T07.

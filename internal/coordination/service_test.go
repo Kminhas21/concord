@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -197,6 +198,28 @@ func TestAppendActualExtendsFootprint(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("appended actual path missing from footprint: %v", m.GetPaths())
+	}
+}
+
+func TestAppendActualIsAtomicUnderConcurrency(t *testing.T) {
+	c := newTestClient(t)
+	const n = 50
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			appendActual(t, c, "agent-concurrent", fmt.Sprintf("area/f%d.go", i))
+		}(i)
+	}
+	wg.Wait()
+
+	m := findMatch(queryIntent(t, c, "q", "area/f0.go"), "agent-concurrent")
+	if m == nil {
+		t.Fatal("agent-concurrent not returned")
+	}
+	if got := len(m.GetPaths()); got != n {
+		t.Fatalf("concurrent AppendActual kept %d of %d paths — appends are not atomic", got, n)
 	}
 }
 

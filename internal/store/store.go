@@ -95,70 +95,44 @@ type IntentStore interface {
 
 const intentSetKey = "intents"
 
+// intentKey holds the predicted footprint (JSON); actualKey holds the actual
+// footprint as a Redis set, so appends are atomic (SADD) and never race.
 func intentKey(actorID string) string { return "intent:" + actorID }
+func actualKey(actorID string) string { return "intent:" + actorID + ":actual" }
 
 var _ IntentStore = (*RedisStore)(nil)
 
-// getRecord loads an actor's intent record, or (nil, nil) when there is none.
-func (s *RedisStore) getRecord(ctx context.Context, actorID string) (*IntentRecord, error) {
-	raw, err := s.client.Get(ctx, intentKey(actorID)).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var rec IntentRecord
-	if err := json.Unmarshal([]byte(raw), &rec); err != nil {
-		return nil, err
-	}
-	return &rec, nil
-}
-
-// saveRecord writes the record with the intent TTL (refresh-on-touch) and keeps
-// the actor in the active set.
-func (s *RedisStore) saveRecord(ctx context.Context, rec *IntentRecord) error {
-	b, err := json.Marshal(rec)
+// PutPredicted stores the predicted footprint (replacing any prior one) and
+// refreshes the silence timer on both the predicted doc and the actual set.
+func (s *RedisStore) PutPredicted(ctx context.Context, actorID, intentText string, predictedPaths []string) error {
+	b, err := json.Marshal(IntentRecord{ActorID: actorID, IntentText: intentText, PredictedPaths: predictedPaths})
 	if err != nil {
 		return err
 	}
 	pipe := s.client.TxPipeline()
-	pipe.Set(ctx, intentKey(rec.ActorID), b, s.intentTTL)
-	pipe.SAdd(ctx, intentSetKey, rec.ActorID)
+	pipe.Set(ctx, intentKey(actorID), b, s.intentTTL)
+	pipe.Expire(ctx, actualKey(actorID), s.intentTTL) // no-op if the actor has no actual set yet
+	pipe.SAdd(ctx, intentSetKey, actorID)
 	_, err = pipe.Exec(ctx)
 	return err
 }
 
-// PutPredicted stores the predicted footprint and refreshes the silence timer.
-func (s *RedisStore) PutPredicted(ctx context.Context, actorID, intentText string, predictedPaths []string) error {
-	return s.saveRecord(ctx, &IntentRecord{
-		ActorID:        actorID,
-		IntentText:     intentText,
-		PredictedPaths: predictedPaths,
-	})
-}
-
-// AppendActual adds path to the actor's actual footprint (deduplicated),
-// creating the record if needed, and refreshes the silence timer.
+// AppendActual adds path to the actor's actual footprint and refreshes the
+// silence timer. SADD is atomic and set-valued, so concurrent appends neither
+// race nor duplicate.
 func (s *RedisStore) AppendActual(ctx context.Context, actorID, path string) error {
-	rec, err := s.getRecord(ctx, actorID)
-	if err != nil {
-		return err
-	}
-	if rec == nil {
-		rec = &IntentRecord{ActorID: actorID}
-	}
-	for _, p := range rec.ActualPaths {
-		if p == path {
-			return s.saveRecord(ctx, rec) // already present; still refresh TTL
-		}
-	}
-	rec.ActualPaths = append(rec.ActualPaths, path)
-	return s.saveRecord(ctx, rec)
+	pipe := s.client.TxPipeline()
+	pipe.SAdd(ctx, actualKey(actorID), path)
+	pipe.Expire(ctx, actualKey(actorID), s.intentTTL)
+	pipe.Expire(ctx, intentKey(actorID), s.intentTTL) // refresh the predicted doc if present
+	pipe.SAdd(ctx, intentSetKey, actorID)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
-// ListIntents loads every active intent record. Records whose key has expired
-// but whose id lingers in the set are skipped.
+// ListIntents loads every active intent record, combining the predicted doc and
+// the actual set. An id lingering in the active set whose keys have both expired
+// is skipped.
 func (s *RedisStore) ListIntents(ctx context.Context) ([]IntentRecord, error) {
 	ids, err := s.client.SMembers(ctx, intentSetKey).Result()
 	if err != nil {
@@ -167,23 +141,30 @@ func (s *RedisStore) ListIntents(ctx context.Context) ([]IntentRecord, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	keys := make([]string, len(ids))
+
+	pipe := s.client.Pipeline()
+	gets := make([]*redis.StringCmd, len(ids))
+	actuals := make([]*redis.StringSliceCmd, len(ids))
 	for i, id := range ids {
-		keys[i] = intentKey(id)
+		gets[i] = pipe.Get(ctx, intentKey(id))
+		actuals[i] = pipe.SMembers(ctx, actualKey(id))
 	}
-	vals, err := s.client.MGet(ctx, keys...).Result()
-	if err != nil {
-		return nil, err
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, err // redis.Nil is expected for a missing predicted doc
 	}
-	out := make([]IntentRecord, 0, len(vals))
-	for _, v := range vals {
-		raw, ok := v.(string)
-		if !ok {
-			continue // key missing/expired
+
+	out := make([]IntentRecord, 0, len(ids))
+	for i, id := range ids {
+		rec := IntentRecord{ActorID: id}
+		if raw, err := gets[i].Result(); err == nil {
+			_ = json.Unmarshal([]byte(raw), &rec)
+		} else if !errors.Is(err, redis.Nil) {
+			return nil, err
 		}
-		var rec IntentRecord
-		if err := json.Unmarshal([]byte(raw), &rec); err != nil {
-			continue
+		rec.ActorID = id
+		rec.ActualPaths = actuals[i].Val()
+		if len(rec.PredictedPaths) == 0 && len(rec.ActualPaths) == 0 && rec.IntentText == "" {
+			continue // both keys gone; stale id in the active set
 		}
 		out = append(out, rec)
 	}
