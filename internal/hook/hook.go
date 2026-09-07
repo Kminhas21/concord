@@ -3,7 +3,10 @@
 // or filesystem calls, so it is unit-testable on its own.
 package hook
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // ToolInput is the subset of a tool call concord reads.
 type ToolInput struct {
@@ -49,6 +52,27 @@ var shellTools = map[string]bool{
 // IsShellTool reports whether name is a shell tool whose writes are reconciled
 // via the git-status sweep.
 func IsShellTool(name string) bool { return shellTools[name] }
+
+// pathLikeToken matches whitespace-free tokens that contain a slash — the
+// conservative shape of a repo-relative path in free-text prompts.
+var pathLikeToken = regexp.MustCompile(`[A-Za-z0-9_.\-/]*/[A-Za-z0-9_.\-/]+`)
+
+// ExtractPredictedPaths pulls path-like tokens out of a delegation prompt for
+// the predicted footprint. It is deliberately conservative (a token must
+// contain a slash) since the predicted footprint is advisory; missing a path
+// only weakens dedup, never correctness. Results are de-duplicated in order.
+func ExtractPredictedPaths(prompt string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, m := range pathLikeToken.FindAllString(prompt, -1) {
+		m = strings.Trim(m, "/.,")
+		if m != "" && !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	return out
+}
 
 // ParseGitStatusPorcelain extracts the changed file paths from the output of
 // `git status --porcelain`. Each line is "XY <path>", with renames written as

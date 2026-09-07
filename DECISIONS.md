@@ -137,3 +137,19 @@ Format per entry:
 **Why:** The RPC seam is for the service; the hook client also carries non-trivial logic that would otherwise be untested "glue." Isolating it as pure functions makes it testable without a daemon or Docker, keeping the CLI itself dumb enough to not need its own tests.
 **Detail:** git-status rename lines (`R old -> new`) resolve to the new path.
 **Links:** TICKETS T09; ADR-0005 (actor id).
+
+## 2026-09-06 — T09b: correctness hooks fail open when the daemon is unreachable
+**Decision:** `concord-hook pre-tool-use` exits 0 (allowing the edit) with a stderr warning if it cannot reach the daemon or errors internally; it exits 2 only on an actual stale-edit verdict. Advisory subcommands always exit 0.
+**Why:** concord is an assist, not a gatekeeper. A crashed daemon or a hashing error must not brick the user's ability to edit. The guarantee is already scoped to "when concord observes"; unavailability is one of the cases it does not cover.
+**Alternatives:** Fail closed (rejected — a down daemon would halt all edits).
+**Links:** TICKETS T09; SPEC "The guarantee"; cmd/concord-hook.
+
+## 2026-09-06 — T09b: the hook client normalizes all paths to absolute (bug caught in live test)
+**Decision:** `concord-hook` resolves every path to an absolute, cleaned, forward-slash form before sending it to the daemon — for edit-tool `file_path` and for the repo-relative paths from `git status --porcelain`.
+**Why:** A live end-to-end test showed edit tools pass absolute paths while the git-status sweep yields repo-relative ones; without normalization the two produced different keys and reconcile silently missed. `filepath.Abs` (resolved against the hook's working directory = repo root) makes the keys agree.
+**Links:** TICKETS T05/T09; cmd/concord-hook normalize().
+
+## 2026-09-06 — T09b: predicted-path extraction is best-effort and prompt-shaped
+**Decision:** `ExtractPredictedPaths` pulls slash-containing tokens from the delegation prompt. It targets repo-relative paths (`src/auth/login.go`); a Windows drive-letter absolute path (`C:/...`) is mangled because `:` is not a path char. Left as-is.
+**Why:** The predicted footprint is advisory — a missed or malformed predicted path only weakens dedup, never correctness — and real delegation prompts use repo-relative paths. Handling drive letters isn't worth the regex complexity.
+**Links:** TICKETS T09; internal/hook.ExtractPredictedPaths.

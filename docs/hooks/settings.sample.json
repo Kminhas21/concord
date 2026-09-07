@@ -1,0 +1,22 @@
+{
+  "//": "Sample Claude Code hook wiring for concord. Put concord-hook on PATH and run the concord daemon. There is deliberately no FileChanged hook (see docs/spikes/filechanged.md); shell writes are reconciled by the PostToolUse Bash|PowerShell path.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [{ "type": "command", "command": "concord-hook pre-tool-use" }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [{ "type": "command", "command": "concord-hook post-tool-use" }]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [{ "type": "command", "command": "concord-hook subagent-start" }]
+      }
+    ]
+  }
+}

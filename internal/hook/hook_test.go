@@ -37,6 +37,15 @@ func TestToolClassification(t *testing.T) {
 	}
 }
 
+func TestExtractPredictedPaths(t *testing.T) {
+	prompt := "Refactor src/auth/login.go and update pkg/db/schema.go; see e.g. the notes. Also touch src/auth/login.go again."
+	got := hook.ExtractPredictedPaths(prompt)
+	want := []string{"src/auth/login.go", "pkg/db/schema.go"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ExtractPredictedPaths = %v, want %v", got, want)
+	}
+}
+
 func TestParseGitStatusPorcelain(t *testing.T) {
 	out := " M cmd/concord/main.go\n?? new/file.go\nR  old/name.go -> new/name.go\n"
 	got := hook.ParseGitStatusPorcelain(out)
