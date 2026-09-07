@@ -21,14 +21,14 @@ concord is a standalone Go service, backed by Dragonfly, that coordinates concur
 
 ## The guarantee (quote it honestly)
 
-No edit-tool call proceeds when the target file's current content hash differs from the hash the acting holder recorded at its last read. Out-of-band writes (shell, editor) are reconciled best-effort via the `FileChanged` hook; a write no concord hook observes is outside the guarantee.
+No edit-tool call proceeds when the target file's current content hash differs from the hash the acting holder recorded at its last read. Out-of-band writes (shell, editor) are reconciled best-effort — `CheckEdit` compares against the live on-disk hash, and a `PostToolUse` git-status sweep advances the writing actor's own read-hash; a write no concord hook observes is outside the guarantee.
 
 ## Building it
 
 - **Language:** Go. **Store:** Dragonfly (for access shape, not scale — say so).
 - **Shape:** one long-lived local daemon; each hook spawns a thin **compiled** client making one localhost RPC (ADR-0007). The compiled client matters — python/node startup blows the latency budget (`docs/budgets.md`).
 - **One test seam:** the RPC surface. Drive all tests through it against an ephemeral Dragonfly. Never test internal key layout. Work **test-first (TDD)**.
-- **Verify early — two platform capabilities the correctness story leans on:** that the `FileChanged` hook payload carries the changed path, and that it fires before the next tool call. If either fails, Bash writes stay explicitly outside the guarantee.
+- **Bash-hole mechanism (resolved, T02 spike):** `FileChanged` was rejected (async, can race the next check). Reconciliation uses live-hashing at `CheckEdit` + a synchronous `PostToolUse` git-status sweep. Shell writes in non-git dirs stay outside the guarantee.
 
 ## Working agreement
 

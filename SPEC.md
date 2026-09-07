@@ -27,13 +27,15 @@ The read path for Layer 2 runs through the **orchestrator**, which queries the r
 
 ### The guarantee (honest about scope)
 
-> **No edit-tool call proceeds when the target file's current content hash differs from the hash the acting holder recorded at its last read of it.** Out-of-band writes — shell commands and the human's editor — are reconciled best-effort by the `FileChanged` hook so that a subsequent edit-tool call sees the true current hash; a write that no concord hook ever observes is outside the guarantee.
+> **No edit-tool call proceeds when the target file's current content hash differs from the hash the acting holder recorded at its last read of it.** Out-of-band writes — shell commands and the human's editor — are reconciled best-effort so a subsequent edit-tool call sees the true current hash; a write that no concord hook ever observes is outside the guarantee.
+
+(The reconciliation mechanism changed during implementation — see the T02 spike, `docs/spikes/filechanged.md`: `CheckEdit` compares against the live on-disk hash, and a synchronous `PostToolUse` `Bash|PowerShell` git-status sweep advances the writing actor's own read-hash. The `FileChanged` hook was rejected as async and unreliable.)
 
 ### What concord permits to break, and why each is acceptable
 
 - **A stale intent record.** Degrades dedup efficiency only; correctness is untouched (settled invariant). A record for a dead agent simply expires on silence.
 - **A missed dedup opportunity** — two agents doing overlapping work despite the registry. Acceptable **only within safe scope** (refactors and mechanical work), where the verification pass makes the omission loud. This is the precondition, not an assumption.
-- **A `FileChanged` reconciliation that fires late or not at all** for an exotic shell write. The guarantee is deliberately scoped so this is a known gap, not a broken promise; the human's verification pass remains the backstop.
+- **A shell write in a non-git working directory**, where the git-status sweep finds nothing to reconcile. The guarantee is deliberately scoped so this is a known gap, not a broken promise; the human's verification pass remains the backstop.
 - **A reported overlap that isn't real** — a false positive in the advisory layer. It costs one wasted look and never denies a write.
 
 ### The verification-pass precondition
@@ -88,7 +90,7 @@ concord's safe-scope claim depends on a condition concord does not itself provid
 
 - `RecordRead(actor_id, path, hash)` — a holder records its read-hash for a path.
 - `CheckEdit(actor_id, path, current_hash) -> {allow | block, message}` — the version check; block when `current_hash` ≠ the holder's recorded read-hash.
-- `ReconcileFileChange(path, new_hash)` — driven by the `FileChanged` hook; updates the canonical current hash for out-of-band writes.
+- `ReconcileFileChange(actor_id, path, new_hash)` — driven by the `PostToolUse` git-status sweep; advances the writing actor's own read-hash after its out-of-band shell write. (`CheckEdit` already sees other writers' out-of-band changes because it compares against the live on-disk hash.)
 - `RegisterPredicted(actor_id, intent_text, predicted_paths)` — write the predicted footprint once at subagent start.
 - `AppendActual(actor_id, path)` — append to the actual footprint; refreshes the record TTL.
 - `QueryIntent(intent_text, paths) -> {overlaps: [{actor_id, intent_text, paths}], ...}` — literal path-token intersection plus the candidate intent strings for the caller to judge; never denies.
@@ -98,7 +100,7 @@ concord's safe-scope claim depends on a condition concord does not itself provid
 **Hooks.**
 - `PreToolUse` on the edit tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) → `CheckEdit`; block with exit 2 on mismatch.
 - `PostToolUse` (or read-capturing surface) → `RecordRead` on reads and `AppendActual` on writes. Edit-tool writes are recorded by default; read recording is an opt-in per-actor mode for exploration agents only (the peak-load measurement shows even all-tool recording costs ~0.5% of wall time, so the default is a cleanliness choice, not a cost one).
-- `FileChanged` → `ReconcileFileChange`, to close the Bash hole best-effort by catching shell and external-editor writes. **Two capabilities remain to be verified in implementation:** that `FileChanged`'s payload carries the changed path, and that it fires before the next tool call rather than racing it. If either fails, the fallback is to leave Bash writes explicitly outside the guarantee (the guarantee statement already permits this).
+- `PostToolUse` on `Bash`/`PowerShell` → run `git status --porcelain`, then `ReconcileFileChange` per changed file, to close the Bash hole best-effort. This is synchronous (it completes before the next tool call), unlike the rejected `FileChanged` hook (see the T02 spike, `docs/spikes/filechanged.md`). In a non-git directory it finds nothing, and those shell writes stay outside the guarantee.
 - The intent read path is NOT a hook: `SubagentStart` cannot inject context (ADR-0005), so the orchestrator calls `QueryIntent` itself before delegating.
 
 **Intent matching.** Path overlap is a literal set-intersection over path tokens in Dragonfly. Semantic intent overlap is judged by the querying model from the returned candidate strings — concord embeds nothing and tunes no threshold (ADR-0006).
@@ -146,7 +148,7 @@ The hook client must therefore be a **compiled binary** (not a python/node scrip
 - Durable memory and retrieval over past sessions — Hindsight's job (ADR-0003).
 - Kubernetes, multi-node, cross-machine coordination. Exactly one daemon per machine (ADR-0007).
 - Embedding-based or vector semantic matching, and any tunable similarity threshold (ADR-0006).
-- Parsing arbitrary shell commands for target paths. The Bash hole is handled by `FileChanged` reconciliation or left explicitly outside the guarantee — never by fragile command parsing.
+- Parsing arbitrary shell commands for target paths. The Bash hole is handled by the git-status reconcile sweep or left explicitly outside the guarantee — never by fragile command parsing.
 - Exploration as safe scope for dedup. Dedup is safe only where omission is loud.
 
 ---
@@ -155,6 +157,6 @@ The hook client must therefore be a **compiled binary** (not a python/node scrip
 
 **First implementation task: promote the throwaway budget parser.** The budgets above came from a throwaway parser over `~/.claude/projects/`. Its output is captured in `docs/budgets.md`; the parser itself is disposable. Re-measure if the TTL default or hot-path decision is ever revisited.
 
-**Two unverified platform capabilities gate correctness completeness**, both flagged inline above: (1) the `FileChanged` payload includes the changed path, and (2) `FileChanged` fires before the next tool call rather than racing it. Verify both early in implementation; if either fails, the guarantee statement already accommodates leaving Bash writes out of scope.
+**The Bash-hole mechanism was resolved by the T02 spike** (`docs/spikes/filechanged.md`): `FileChanged` was rejected (filename-scoped, unconfirmed payload, and — decisively — asynchronous, so it can race the next check). Reconciliation instead uses live-hashing at `CheckEdit` plus a synchronous `PostToolUse` git-status sweep. Shell writes in non-git directories remain outside the guarantee, which the guarantee statement already permits.
 
 **The name.** "Lease manager" described a rejected architecture; the service is named **concord** — coordination without locking.

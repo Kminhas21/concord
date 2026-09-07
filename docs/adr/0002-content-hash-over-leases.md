@@ -5,4 +5,4 @@ The version check compares a file's current content hash against the holder's re
 ## Consequences
 
 - No liveness detection, expiry, or reaper is needed, because nothing is held on behalf of a process that can't be observed.
-- The guarantee is scoped to writes that pass through a hooked edit tool; out-of-band writes (shell commands, the human's editor) are reconciled separately via the `FileChanged` hook — see the Bash-hole handling in `SPEC.md`.
+- The guarantee is scoped to writes that pass through a hooked edit tool; out-of-band writes (shell commands, the human's editor) are reconciled separately — `CheckEdit` compares against the live on-disk hash, and a `PostToolUse` git-status sweep advances the writing actor's own read-hash (see the T02 spike, `docs/spikes/filechanged.md`).
