@@ -681,6 +681,94 @@ func (x *QueryIntentResponse) GetMatches() []*IntentMatch {
 	return nil
 }
 
+type AppendActualRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ActorId       string                 `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AppendActualRequest) Reset() {
+	*x = AppendActualRequest{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppendActualRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppendActualRequest) ProtoMessage() {}
+
+func (x *AppendActualRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppendActualRequest.ProtoReflect.Descriptor instead.
+func (*AppendActualRequest) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *AppendActualRequest) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *AppendActualRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type AppendActualResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AppendActualResponse) Reset() {
+	*x = AppendActualResponse{}
+	mi := &file_concord_v1_coordination_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppendActualResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppendActualResponse) ProtoMessage() {}
+
+func (x *AppendActualResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_concord_v1_coordination_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppendActualResponse.ProtoReflect.Descriptor instead.
+func (*AppendActualResponse) Descriptor() ([]byte, []int) {
+	return file_concord_v1_coordination_proto_rawDescGZIP(), []int{14}
+}
+
 var File_concord_v1_coordination_proto protoreflect.FileDescriptor
 
 const file_concord_v1_coordination_proto_rawDesc = "" +
@@ -725,7 +813,11 @@ const file_concord_v1_coordination_proto_rawDesc = "" +
 	"\x05paths\x18\x03 \x03(\tR\x05paths\x12!\n" +
 	"\fpath_overlap\x18\x04 \x01(\bR\vpathOverlap\"H\n" +
 	"\x13QueryIntentResponse\x121\n" +
-	"\amatches\x18\x01 \x03(\v2\x17.concord.v1.IntentMatchR\amatches2\x81\x04\n" +
+	"\amatches\x18\x01 \x03(\v2\x17.concord.v1.IntentMatchR\amatches\"D\n" +
+	"\x13AppendActualRequest\x12\x19\n" +
+	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"\x16\n" +
+	"\x14AppendActualResponse2\xd4\x04\n" +
 	"\x13CoordinationService\x129\n" +
 	"\x04Ping\x12\x17.concord.v1.PingRequest\x1a\x18.concord.v1.PingResponse\x12K\n" +
 	"\n" +
@@ -733,7 +825,8 @@ const file_concord_v1_coordination_proto_rawDesc = "" +
 	"\tCheckEdit\x12\x1c.concord.v1.CheckEditRequest\x1a\x1d.concord.v1.CheckEditResponse\x12f\n" +
 	"\x13ReconcileFileChange\x12&.concord.v1.ReconcileFileChangeRequest\x1a'.concord.v1.ReconcileFileChangeResponse\x12`\n" +
 	"\x11RegisterPredicted\x12$.concord.v1.RegisterPredictedRequest\x1a%.concord.v1.RegisterPredictedResponse\x12N\n" +
-	"\vQueryIntent\x12\x1e.concord.v1.QueryIntentRequest\x1a\x1f.concord.v1.QueryIntentResponseB7Z5github.com/Kminhas21/concord/gen/concord/v1;concordv1b\x06proto3"
+	"\vQueryIntent\x12\x1e.concord.v1.QueryIntentRequest\x1a\x1f.concord.v1.QueryIntentResponse\x12Q\n" +
+	"\fAppendActual\x12\x1f.concord.v1.AppendActualRequest\x1a .concord.v1.AppendActualResponseB7Z5github.com/Kminhas21/concord/gen/concord/v1;concordv1b\x06proto3"
 
 var (
 	file_concord_v1_coordination_proto_rawDescOnce sync.Once
@@ -747,7 +840,7 @@ func file_concord_v1_coordination_proto_rawDescGZIP() []byte {
 	return file_concord_v1_coordination_proto_rawDescData
 }
 
-var file_concord_v1_coordination_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_concord_v1_coordination_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_concord_v1_coordination_proto_goTypes = []any{
 	(*PingRequest)(nil),                 // 0: concord.v1.PingRequest
 	(*PingResponse)(nil),                // 1: concord.v1.PingResponse
@@ -762,6 +855,8 @@ var file_concord_v1_coordination_proto_goTypes = []any{
 	(*QueryIntentRequest)(nil),          // 10: concord.v1.QueryIntentRequest
 	(*IntentMatch)(nil),                 // 11: concord.v1.IntentMatch
 	(*QueryIntentResponse)(nil),         // 12: concord.v1.QueryIntentResponse
+	(*AppendActualRequest)(nil),         // 13: concord.v1.AppendActualRequest
+	(*AppendActualResponse)(nil),        // 14: concord.v1.AppendActualResponse
 }
 var file_concord_v1_coordination_proto_depIdxs = []int32{
 	11, // 0: concord.v1.QueryIntentResponse.matches:type_name -> concord.v1.IntentMatch
@@ -771,14 +866,16 @@ var file_concord_v1_coordination_proto_depIdxs = []int32{
 	6,  // 4: concord.v1.CoordinationService.ReconcileFileChange:input_type -> concord.v1.ReconcileFileChangeRequest
 	8,  // 5: concord.v1.CoordinationService.RegisterPredicted:input_type -> concord.v1.RegisterPredictedRequest
 	10, // 6: concord.v1.CoordinationService.QueryIntent:input_type -> concord.v1.QueryIntentRequest
-	1,  // 7: concord.v1.CoordinationService.Ping:output_type -> concord.v1.PingResponse
-	3,  // 8: concord.v1.CoordinationService.RecordRead:output_type -> concord.v1.RecordReadResponse
-	5,  // 9: concord.v1.CoordinationService.CheckEdit:output_type -> concord.v1.CheckEditResponse
-	7,  // 10: concord.v1.CoordinationService.ReconcileFileChange:output_type -> concord.v1.ReconcileFileChangeResponse
-	9,  // 11: concord.v1.CoordinationService.RegisterPredicted:output_type -> concord.v1.RegisterPredictedResponse
-	12, // 12: concord.v1.CoordinationService.QueryIntent:output_type -> concord.v1.QueryIntentResponse
-	7,  // [7:13] is the sub-list for method output_type
-	1,  // [1:7] is the sub-list for method input_type
+	13, // 7: concord.v1.CoordinationService.AppendActual:input_type -> concord.v1.AppendActualRequest
+	1,  // 8: concord.v1.CoordinationService.Ping:output_type -> concord.v1.PingResponse
+	3,  // 9: concord.v1.CoordinationService.RecordRead:output_type -> concord.v1.RecordReadResponse
+	5,  // 10: concord.v1.CoordinationService.CheckEdit:output_type -> concord.v1.CheckEditResponse
+	7,  // 11: concord.v1.CoordinationService.ReconcileFileChange:output_type -> concord.v1.ReconcileFileChangeResponse
+	9,  // 12: concord.v1.CoordinationService.RegisterPredicted:output_type -> concord.v1.RegisterPredictedResponse
+	12, // 13: concord.v1.CoordinationService.QueryIntent:output_type -> concord.v1.QueryIntentResponse
+	14, // 14: concord.v1.CoordinationService.AppendActual:output_type -> concord.v1.AppendActualResponse
+	8,  // [8:15] is the sub-list for method output_type
+	1,  // [1:8] is the sub-list for method input_type
 	1,  // [1:1] is the sub-list for extension type_name
 	1,  // [1:1] is the sub-list for extension extendee
 	0,  // [0:1] is the sub-list for field type_name
@@ -795,7 +892,7 @@ func file_concord_v1_coordination_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_concord_v1_coordination_proto_rawDesc), len(file_concord_v1_coordination_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

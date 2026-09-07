@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -29,14 +30,21 @@ func readHashKey(actorID, path string) string {
 	return "readhash:" + actorID + unitSep + path
 }
 
-// RedisStore is a Dragonfly/Redis-backed ReadHashStore.
+// RedisStore is a Dragonfly/Redis-backed store for both read-hashes and intent
+// records.
 type RedisStore struct {
-	client *redis.Client
+	client    *redis.Client
+	intentTTL time.Duration
 }
 
-// NewRedisStore connects to a Dragonfly instance at addr (host:port).
-func NewRedisStore(addr string) *RedisStore {
-	return &RedisStore{client: redis.NewClient(&redis.Options{Addr: addr})}
+// NewRedisStore connects to a Dragonfly instance at addr (host:port). intentTTL
+// is the silence window after which an untouched intent record expires;
+// read-hashes are never expired.
+func NewRedisStore(addr string, intentTTL time.Duration) *RedisStore {
+	return &RedisStore{
+		client:    redis.NewClient(&redis.Options{Addr: addr}),
+		intentTTL: intentTTL,
+	}
 }
 
 // Close releases the underlying client.
@@ -73,10 +81,14 @@ type IntentRecord struct {
 }
 
 // IntentStore persists advisory intent records and enumerates the active ones.
+// Every write refreshes the record's silence timer.
 type IntentStore interface {
 	// PutPredicted writes an actor's predicted footprint, replacing any existing
 	// record for that actor.
 	PutPredicted(ctx context.Context, actorID, intentText string, predictedPaths []string) error
+	// AppendActual adds a path to the actor's actual footprint, creating the
+	// record if none exists yet.
+	AppendActual(ctx context.Context, actorID, path string) error
 	// ListIntents returns every active intent record.
 	ListIntents(ctx context.Context) ([]IntentRecord, error)
 }
@@ -87,19 +99,62 @@ func intentKey(actorID string) string { return "intent:" + actorID }
 
 var _ IntentStore = (*RedisStore)(nil)
 
-// PutPredicted stores the predicted footprint and adds the actor to the active
-// set. No TTL yet — expiry arrives with actual-footprint touches (T07).
-func (s *RedisStore) PutPredicted(ctx context.Context, actorID, intentText string, predictedPaths []string) error {
-	rec := IntentRecord{ActorID: actorID, IntentText: intentText, PredictedPaths: predictedPaths}
+// getRecord loads an actor's intent record, or (nil, nil) when there is none.
+func (s *RedisStore) getRecord(ctx context.Context, actorID string) (*IntentRecord, error) {
+	raw, err := s.client.Get(ctx, intentKey(actorID)).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var rec IntentRecord
+	if err := json.Unmarshal([]byte(raw), &rec); err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// saveRecord writes the record with the intent TTL (refresh-on-touch) and keeps
+// the actor in the active set.
+func (s *RedisStore) saveRecord(ctx context.Context, rec *IntentRecord) error {
 	b, err := json.Marshal(rec)
 	if err != nil {
 		return err
 	}
 	pipe := s.client.TxPipeline()
-	pipe.Set(ctx, intentKey(actorID), b, 0)
-	pipe.SAdd(ctx, intentSetKey, actorID)
+	pipe.Set(ctx, intentKey(rec.ActorID), b, s.intentTTL)
+	pipe.SAdd(ctx, intentSetKey, rec.ActorID)
 	_, err = pipe.Exec(ctx)
 	return err
+}
+
+// PutPredicted stores the predicted footprint and refreshes the silence timer.
+func (s *RedisStore) PutPredicted(ctx context.Context, actorID, intentText string, predictedPaths []string) error {
+	return s.saveRecord(ctx, &IntentRecord{
+		ActorID:        actorID,
+		IntentText:     intentText,
+		PredictedPaths: predictedPaths,
+	})
+}
+
+// AppendActual adds path to the actor's actual footprint (deduplicated),
+// creating the record if needed, and refreshes the silence timer.
+func (s *RedisStore) AppendActual(ctx context.Context, actorID, path string) error {
+	rec, err := s.getRecord(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		rec = &IntentRecord{ActorID: actorID}
+	}
+	for _, p := range rec.ActualPaths {
+		if p == path {
+			return s.saveRecord(ctx, rec) // already present; still refresh TTL
+		}
+	}
+	rec.ActualPaths = append(rec.ActualPaths, path)
+	return s.saveRecord(ctx, rec)
 }
 
 // ListIntents loads every active intent record. Records whose key has expired

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	concordv1 "github.com/Kminhas21/concord/gen/concord/v1"
@@ -35,10 +36,17 @@ func TestMain(m *testing.M) {
 }
 
 // newTestClient wires a Service backed by the shared Dragonfly onto an httptest
-// server and returns a Connect client for it. This is the seam.
+// server and returns a Connect client for it. This is the seam. Intent records
+// get a long TTL so unrelated tests never expire mid-run.
 func newTestClient(t *testing.T) concordv1connect.CoordinationServiceClient {
+	return newTestClientTTL(t, 10*time.Minute)
+}
+
+// newTestClientTTL is newTestClient with a chosen intent TTL, for tests that
+// exercise expiry.
+func newTestClientTTL(t *testing.T, intentTTL time.Duration) concordv1connect.CoordinationServiceClient {
 	t.Helper()
-	rs := store.NewRedisStore(dragonflyAddr)
+	rs := store.NewRedisStore(dragonflyAddr, intentTTL)
 	svc := coordination.NewService(rs, rs)
 	mux := http.NewServeMux()
 	path, handler := concordv1connect.NewCoordinationServiceHandler(svc)
@@ -157,6 +165,68 @@ func findMatch(matches []*concordv1.IntentMatch, actor string) *concordv1.Intent
 		}
 	}
 	return nil
+}
+
+func appendActual(t *testing.T, c concordv1connect.CoordinationServiceClient, actor, path string) {
+	t.Helper()
+	_, err := c.AppendActual(context.Background(), connect.NewRequest(&concordv1.AppendActualRequest{
+		ActorId: actor, Path: path,
+	}))
+	if err != nil {
+		t.Fatalf("AppendActual(%s,%s): %v", actor, path, err)
+	}
+}
+
+func TestAppendActualExtendsFootprint(t *testing.T) {
+	c := newTestClient(t)
+	registerPredicted(t, c, "agent-actual", "refactor auth", "t7actual/auth/login.go")
+
+	// A path outside the predicted scope, added as the agent actually works.
+	appendActual(t, c, "agent-actual", "t7actual/db/schema.go")
+
+	// Querying that new area now overlaps, and the footprint includes it.
+	m := findMatch(queryIntent(t, c, "touch schema", "t7actual/db/schema.go"), "agent-actual")
+	if m == nil || !m.GetPathOverlap() {
+		t.Fatal("actual path not reflected in the footprint / overlap")
+	}
+	found := false
+	for _, p := range m.GetPaths() {
+		if p == "t7actual/db/schema.go" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("appended actual path missing from footprint: %v", m.GetPaths())
+	}
+}
+
+func TestActualFootprintExpiresOnSilence(t *testing.T) {
+	c := newTestClientTTL(t, 800*time.Millisecond)
+	registerPredicted(t, c, "agent-expire", "short-lived", "t7exp/x.go")
+	appendActual(t, c, "agent-expire", "t7exp/y.go")
+
+	if findMatch(queryIntent(t, c, "q", "t7exp/x.go"), "agent-expire") == nil {
+		t.Fatal("precondition: record absent immediately after write")
+	}
+
+	time.Sleep(1200 * time.Millisecond) // exceed the silence window
+
+	if findMatch(queryIntent(t, c, "q", "t7exp/x.go"), "agent-expire") != nil {
+		t.Fatal("record did not expire after silence beyond the TTL")
+	}
+}
+
+func TestTouchRefreshesTTL(t *testing.T) {
+	c := newTestClientTTL(t, 800*time.Millisecond)
+	registerPredicted(t, c, "agent-refresh", "kept alive", "t7ref/x.go")
+
+	time.Sleep(500 * time.Millisecond)
+	appendActual(t, c, "agent-refresh", "t7ref/y.go") // touch refreshes the timer
+	time.Sleep(500 * time.Millisecond)                // 1s since register, but 500ms since touch
+
+	if findMatch(queryIntent(t, c, "q", "t7ref/x.go"), "agent-refresh") == nil {
+		t.Fatal("record expired despite a touch within the silence window")
+	}
 }
 
 func TestQueryReportsPathOverlapSameDirectory(t *testing.T) {

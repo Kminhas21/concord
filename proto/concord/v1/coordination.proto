@@ -30,6 +30,10 @@ service CoordinationService {
   // work. It never denies: it returns candidates and a literal path-overlap
   // flag, leaving semantic judgement to the caller.
   rpc QueryIntent(QueryIntentRequest) returns (QueryIntentResponse);
+
+  // AppendActual adds a path to an actor's actual footprint as it works, and
+  // refreshes the record's silence timer. Advisory only.
+  rpc AppendActual(AppendActualRequest) returns (AppendActualResponse);
 }
 
 message PingRequest {
@@ -98,3 +102,10 @@ message IntentMatch {
 message QueryIntentResponse {
   repeated IntentMatch matches = 1;
 }
+
+message AppendActualRequest {
+  string actor_id = 1;
+  string path = 2;
+}
+
+message AppendActualResponse {}

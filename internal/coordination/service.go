@@ -83,6 +83,16 @@ func (s *Service) QueryIntent(ctx context.Context, req *connect.Request[concordv
 	return connect.NewResponse(resp), nil
 }
 
+// AppendActual adds a path to an actor's actual footprint and refreshes its
+// silence timer.
+func (s *Service) AppendActual(ctx context.Context, req *connect.Request[concordv1.AppendActualRequest]) (*connect.Response[concordv1.AppendActualResponse], error) {
+	m := req.Msg
+	if err := s.intents.AppendActual(ctx, m.GetActorId(), m.GetPath()); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&concordv1.AppendActualResponse{}), nil
+}
+
 // CheckEdit blocks a stale edit: one whose target changed since the actor's
 // recorded read. It never reads the file itself — the caller supplies the
 // current on-disk hash (empty when the file does not exist).

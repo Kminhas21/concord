@@ -51,6 +51,9 @@ const (
 	// CoordinationServiceQueryIntentProcedure is the fully-qualified name of the CoordinationService's
 	// QueryIntent RPC.
 	CoordinationServiceQueryIntentProcedure = "/concord.v1.CoordinationService/QueryIntent"
+	// CoordinationServiceAppendActualProcedure is the fully-qualified name of the CoordinationService's
+	// AppendActual RPC.
+	CoordinationServiceAppendActualProcedure = "/concord.v1.CoordinationService/AppendActual"
 )
 
 // CoordinationServiceClient is a client for the concord.v1.CoordinationService service.
@@ -73,6 +76,9 @@ type CoordinationServiceClient interface {
 	// work. It never denies: it returns candidates and a literal path-overlap
 	// flag, leaving semantic judgement to the caller.
 	QueryIntent(context.Context, *connect.Request[v1.QueryIntentRequest]) (*connect.Response[v1.QueryIntentResponse], error)
+	// AppendActual adds a path to an actor's actual footprint as it works, and
+	// refreshes the record's silence timer. Advisory only.
+	AppendActual(context.Context, *connect.Request[v1.AppendActualRequest]) (*connect.Response[v1.AppendActualResponse], error)
 }
 
 // NewCoordinationServiceClient constructs a client for the concord.v1.CoordinationService service.
@@ -122,6 +128,12 @@ func NewCoordinationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(coordinationServiceMethods.ByName("QueryIntent")),
 			connect.WithClientOptions(opts...),
 		),
+		appendActual: connect.NewClient[v1.AppendActualRequest, v1.AppendActualResponse](
+			httpClient,
+			baseURL+CoordinationServiceAppendActualProcedure,
+			connect.WithSchema(coordinationServiceMethods.ByName("AppendActual")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -133,6 +145,7 @@ type coordinationServiceClient struct {
 	reconcileFileChange *connect.Client[v1.ReconcileFileChangeRequest, v1.ReconcileFileChangeResponse]
 	registerPredicted   *connect.Client[v1.RegisterPredictedRequest, v1.RegisterPredictedResponse]
 	queryIntent         *connect.Client[v1.QueryIntentRequest, v1.QueryIntentResponse]
+	appendActual        *connect.Client[v1.AppendActualRequest, v1.AppendActualResponse]
 }
 
 // Ping calls concord.v1.CoordinationService.Ping.
@@ -165,6 +178,11 @@ func (c *coordinationServiceClient) QueryIntent(ctx context.Context, req *connec
 	return c.queryIntent.CallUnary(ctx, req)
 }
 
+// AppendActual calls concord.v1.CoordinationService.AppendActual.
+func (c *coordinationServiceClient) AppendActual(ctx context.Context, req *connect.Request[v1.AppendActualRequest]) (*connect.Response[v1.AppendActualResponse], error) {
+	return c.appendActual.CallUnary(ctx, req)
+}
+
 // CoordinationServiceHandler is an implementation of the concord.v1.CoordinationService service.
 type CoordinationServiceHandler interface {
 	// Ping is a liveness probe used to prove the seam end to end.
@@ -185,6 +203,9 @@ type CoordinationServiceHandler interface {
 	// work. It never denies: it returns candidates and a literal path-overlap
 	// flag, leaving semantic judgement to the caller.
 	QueryIntent(context.Context, *connect.Request[v1.QueryIntentRequest]) (*connect.Response[v1.QueryIntentResponse], error)
+	// AppendActual adds a path to an actor's actual footprint as it works, and
+	// refreshes the record's silence timer. Advisory only.
+	AppendActual(context.Context, *connect.Request[v1.AppendActualRequest]) (*connect.Response[v1.AppendActualResponse], error)
 }
 
 // NewCoordinationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -230,6 +251,12 @@ func NewCoordinationServiceHandler(svc CoordinationServiceHandler, opts ...conne
 		connect.WithSchema(coordinationServiceMethods.ByName("QueryIntent")),
 		connect.WithHandlerOptions(opts...),
 	)
+	coordinationServiceAppendActualHandler := connect.NewUnaryHandler(
+		CoordinationServiceAppendActualProcedure,
+		svc.AppendActual,
+		connect.WithSchema(coordinationServiceMethods.ByName("AppendActual")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/concord.v1.CoordinationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CoordinationServicePingProcedure:
@@ -244,6 +271,8 @@ func NewCoordinationServiceHandler(svc CoordinationServiceHandler, opts ...conne
 			coordinationServiceRegisterPredictedHandler.ServeHTTP(w, r)
 		case CoordinationServiceQueryIntentProcedure:
 			coordinationServiceQueryIntentHandler.ServeHTTP(w, r)
+		case CoordinationServiceAppendActualProcedure:
+			coordinationServiceAppendActualHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -275,4 +304,8 @@ func (UnimplementedCoordinationServiceHandler) RegisterPredicted(context.Context
 
 func (UnimplementedCoordinationServiceHandler) QueryIntent(context.Context, *connect.Request[v1.QueryIntentRequest]) (*connect.Response[v1.QueryIntentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.QueryIntent is not implemented"))
+}
+
+func (UnimplementedCoordinationServiceHandler) AppendActual(context.Context, *connect.Request[v1.AppendActualRequest]) (*connect.Response[v1.AppendActualResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("concord.v1.CoordinationService.AppendActual is not implemented"))
 }

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Kminhas21/concord/gen/concord/v1/concordv1connect"
 	"github.com/Kminhas21/concord/internal/coordination"
@@ -21,6 +22,10 @@ const defaultAddr = "127.0.0.1:8973"
 // CONCORD_DRAGONFLY_ADDR is unset.
 const defaultDragonflyAddr = "127.0.0.1:6379"
 
+// defaultIntentTTL is the silence window after which an untouched intent record
+// expires. 600s covers p99.9 of active-work inter-tool gaps (docs/budgets.md).
+const defaultIntentTTL = 600 * time.Second
+
 func main() {
 	addr := os.Getenv("CONCORD_ADDR")
 	if addr == "" {
@@ -30,8 +35,16 @@ func main() {
 	if dragonflyAddr == "" {
 		dragonflyAddr = defaultDragonflyAddr
 	}
+	intentTTL := defaultIntentTTL
+	if v := os.Getenv("CONCORD_INTENT_TTL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			log.Fatalf("concord: invalid CONCORD_INTENT_TTL %q: %v", v, err)
+		}
+		intentTTL = d
+	}
 
-	rs := store.NewRedisStore(dragonflyAddr)
+	rs := store.NewRedisStore(dragonflyAddr, intentTTL)
 	svc := coordination.NewService(rs, rs)
 	mux := http.NewServeMux()
 	path, handler := concordv1connect.NewCoordinationServiceHandler(svc)

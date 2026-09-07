@@ -113,3 +113,15 @@ Format per entry:
 **Decision:** Each record is a JSON blob at `intent:{actor_id}`; an `intents` Redis set enumerates active actors. `RedisStore` implements both `ReadHashStore` and `IntentStore`.
 **Why:** A JSON blob keeps the whole footprint (predicted + actual) in one value, simple to read and rewrite; the set gives O(1) enumeration without SCAN. One store type over one Dragonfly connection keeps wiring trivial while the service still depends on two segregated interfaces.
 **Links:** TICKETS T06/T07.
+
+## 2026-09-06 — T07: intent TTL is a store-level policy, refreshed on every write
+**Decision:** `NewRedisStore(addr, intentTTL)` holds the silence window; every `PutPredicted` and `AppendActual` writes the record with `SET ... EX=intentTTL`, so any touch refreshes expiry atomically. Read-hashes remain TTL-less. Default 600s, overridable via `CONCORD_INTENT_TTL` (a Go duration string).
+**Why:** Refresh-on-touch, expire-on-silence is the agreed lifetime (measured p99.9 active gap = 567s → 600s window). Setting the TTL on the value write makes refresh a side effect of the write with no extra round trip. Tests inject sub-second TTLs to exercise expiry quickly.
+**Alternatives:** A separate reaper/sweeper (rejected — the version-check philosophy is to hold nothing that needs reaping; Redis expiry does it); per-call TTL parameters (rejected — TTL is a store policy, not a per-call concern).
+**Links:** TICKETS T07; docs/budgets.md; ADR-0002.
+
+## 2026-09-06 — T07: AppendActual dedups and self-creates; the actor set may hold dead ids
+**Decision:** `AppendActual` appends a path only if absent, and creates a bare record if the actor has none yet; either way it refreshes TTL. When a record key expires, its id can linger in the `intents` set — `ListIntents` skips ids whose key is gone (MGet miss).
+**Why:** Dedup keeps a repeatedly-touched file from bloating the footprint. Self-creation tolerates AppendActual arriving before RegisterPredicted. Leaving dead ids in the set is harmless (they're filtered on read) and avoids needing expiry notifications; the set is tiny.
+**Consequence:** If the set ever grows unbounded across long uptimes, prune it opportunistically during ListIntents. Not needed at measured scale.
+**Links:** TICKETS T07; docs/budgets.md.
