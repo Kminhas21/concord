@@ -22,6 +22,19 @@ func pathTokens(p string) []string {
 	return tokens
 }
 
+// divergentPaths returns the actual paths that fall outside the predicted
+// footprint — those sharing no token with any predicted path. When no scope was
+// predicted, every actual path is divergent.
+func divergentPaths(predicted, actual []string) []string {
+	var out []string
+	for _, a := range actual {
+		if !pathsOverlap([]string{a}, predicted) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // pathsOverlap reports whether any path in a shares a token with any path in b.
 func pathsOverlap(a, b []string) bool {
 	set := make(map[string]struct{})

@@ -74,10 +74,11 @@ func (s *Service) QueryIntent(ctx context.Context, req *connect.Request[concordv
 	for _, r := range records {
 		footprint := append(append([]string{}, r.PredictedPaths...), r.ActualPaths...)
 		resp.Matches = append(resp.Matches, &concordv1.IntentMatch{
-			ActorId:     r.ActorID,
-			IntentText:  r.IntentText,
-			Paths:       footprint,
-			PathOverlap: pathsOverlap(queryPaths, footprint),
+			ActorId:        r.ActorID,
+			IntentText:     r.IntentText,
+			Paths:          footprint,
+			PathOverlap:    pathsOverlap(queryPaths, footprint),
+			DivergentPaths: divergentPaths(r.PredictedPaths, r.ActualPaths),
 		})
 	}
 	return connect.NewResponse(resp), nil

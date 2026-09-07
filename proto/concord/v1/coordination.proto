@@ -97,6 +97,9 @@ message IntentMatch {
   string intent_text = 2;
   repeated string paths = 3;
   bool path_overlap = 4;
+  // divergent_paths are actual-footprint paths that fall outside this actor's
+  // predicted footprint — the primary signal of coupling the partition missed.
+  repeated string divergent_paths = 5;
 }
 
 message QueryIntentResponse {

@@ -125,3 +125,9 @@ Format per entry:
 **Why:** Dedup keeps a repeatedly-touched file from bloating the footprint. Self-creation tolerates AppendActual arriving before RegisterPredicted. Leaving dead ids in the set is harmless (they're filtered on read) and avoids needing expiry notifications; the set is tiny.
 **Consequence:** If the set ever grows unbounded across long uptimes, prune it opportunistically during ListIntents. Not needed at measured scale.
 **Links:** TICKETS T07; docs/budgets.md.
+
+## 2026-09-06 — T08: divergence is per-path, surfaced on every QueryIntent match
+**Decision:** Each `IntentMatch` carries `divergent_paths`: the actor's actual paths that share no token with any predicted path (same overlap rule). It is computed on every query, not stored. With no predicted scope, all actual paths are divergent.
+**Why:** Divergence is the primary coupling signal (SPEC §2); surfacing the specific paths tells the caller *what* left scope, not just that something did. Computing it at query time keeps records simple and always-consistent with the current footprint.
+**Alternatives:** A single `diverged` bool (rejected — loses which paths); precomputing/storing divergence (rejected — must recompute on every predicted/actual change anyway).
+**Links:** TICKETS T08; ADR-0006; internal/coordination/overlap.go.

@@ -279,6 +279,33 @@ func TestQueryNeverDeniesOnFullOverlap(t *testing.T) {
 	}
 }
 
+func contains(xs []string, want string) bool {
+	for _, x := range xs {
+		if x == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestQuerySurfacesDivergence(t *testing.T) {
+	c := newTestClient(t)
+	registerPredicted(t, c, "agent-diverge", "refactor auth", "t8/auth/login.go")
+	appendActual(t, c, "agent-diverge", "t8/auth/logout.go") // same dir as predicted: in scope
+	appendActual(t, c, "agent-diverge", "t8/db/schema.go")   // different area: divergence
+
+	m := findMatch(queryIntent(t, c, "q", "t8/auth/login.go"), "agent-diverge")
+	if m == nil {
+		t.Fatal("agent-diverge not returned")
+	}
+	if !contains(m.GetDivergentPaths(), "t8/db/schema.go") {
+		t.Fatalf("expected t8/db/schema.go surfaced as divergence, got %v", m.GetDivergentPaths())
+	}
+	if contains(m.GetDivergentPaths(), "t8/auth/logout.go") {
+		t.Fatalf("in-scope path wrongly flagged divergent: %v", m.GetDivergentPaths())
+	}
+}
+
 func reconcile(t *testing.T, c concordv1connect.CoordinationServiceClient, actor, path, newHash string) {
 	t.Helper()
 	_, err := c.ReconcileFileChange(context.Background(), connect.NewRequest(&concordv1.ReconcileFileChangeRequest{

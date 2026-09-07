@@ -570,13 +570,16 @@ func (x *QueryIntentRequest) GetPaths() []string {
 // whether its footprint literally overlaps the query paths (same file or
 // directory); intent_text is provided for the caller to judge semantic overlap.
 type IntentMatch struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ActorId       string                 `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
-	IntentText    string                 `protobuf:"bytes,2,opt,name=intent_text,json=intentText,proto3" json:"intent_text,omitempty"`
-	Paths         []string               `protobuf:"bytes,3,rep,name=paths,proto3" json:"paths,omitempty"`
-	PathOverlap   bool                   `protobuf:"varint,4,opt,name=path_overlap,json=pathOverlap,proto3" json:"path_overlap,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ActorId     string                 `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	IntentText  string                 `protobuf:"bytes,2,opt,name=intent_text,json=intentText,proto3" json:"intent_text,omitempty"`
+	Paths       []string               `protobuf:"bytes,3,rep,name=paths,proto3" json:"paths,omitempty"`
+	PathOverlap bool                   `protobuf:"varint,4,opt,name=path_overlap,json=pathOverlap,proto3" json:"path_overlap,omitempty"`
+	// divergent_paths are actual-footprint paths that fall outside this actor's
+	// predicted footprint — the primary signal of coupling the partition missed.
+	DivergentPaths []string `protobuf:"bytes,5,rep,name=divergent_paths,json=divergentPaths,proto3" json:"divergent_paths,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *IntentMatch) Reset() {
@@ -635,6 +638,13 @@ func (x *IntentMatch) GetPathOverlap() bool {
 		return x.PathOverlap
 	}
 	return false
+}
+
+func (x *IntentMatch) GetDivergentPaths() []string {
+	if x != nil {
+		return x.DivergentPaths
+	}
+	return nil
 }
 
 type QueryIntentResponse struct {
@@ -805,13 +815,14 @@ const file_concord_v1_coordination_proto_rawDesc = "" +
 	"\x12QueryIntentRequest\x12\x1f\n" +
 	"\vintent_text\x18\x01 \x01(\tR\n" +
 	"intentText\x12\x14\n" +
-	"\x05paths\x18\x02 \x03(\tR\x05paths\"\x82\x01\n" +
+	"\x05paths\x18\x02 \x03(\tR\x05paths\"\xab\x01\n" +
 	"\vIntentMatch\x12\x19\n" +
 	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x1f\n" +
 	"\vintent_text\x18\x02 \x01(\tR\n" +
 	"intentText\x12\x14\n" +
 	"\x05paths\x18\x03 \x03(\tR\x05paths\x12!\n" +
-	"\fpath_overlap\x18\x04 \x01(\bR\vpathOverlap\"H\n" +
+	"\fpath_overlap\x18\x04 \x01(\bR\vpathOverlap\x12'\n" +
+	"\x0fdivergent_paths\x18\x05 \x03(\tR\x0edivergentPaths\"H\n" +
 	"\x13QueryIntentResponse\x121\n" +
 	"\amatches\x18\x01 \x03(\v2\x17.concord.v1.IntentMatchR\amatches\"D\n" +
 	"\x13AppendActualRequest\x12\x19\n" +
