@@ -105,3 +105,12 @@ Legend: every ticket is `ready-for-agent`.
 
 - [ ] Config via `CONCORD_ADDR` / `CONCORD_DRAGONFLY_ADDR` / `CONCORD_INTENT_TTL` with flag overrides; graceful shutdown.
 - [ ] `README.md` states the guarantee verbatim and the "Dragonfly is chosen for access shape, not scale" disclaimer.
+
+## T11 — Exploration read-footprint opt-in (from code review)
+
+**What to build:** Let an exploration subagent record its *read* footprint so exploration dedup has the read signal it needs (SPEC user story 16), without making refactor/mechanical agents pay for it. Surfaced by the code review as a slipped requirement (no ticket carried it).
+
+**Blocked by:** T07, T09.
+
+- [x] Setting `CONCORD_RECORD_READS` truthy makes `post-tool-use` on `Read` also `AppendActual` the path.
+- [x] Off by default: refactor/mechanical agents record only write footprint.

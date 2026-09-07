@@ -81,6 +81,7 @@ Claude Code settings. The daemon stops cleanly on Ctrl+C / SIGTERM.
 | `CONCORD_ADDR` | `127.0.0.1:8973` | Daemon listen address (loopback only). |
 | `CONCORD_DRAGONFLY_ADDR` | `127.0.0.1:6379` | Dragonfly address. |
 | `CONCORD_INTENT_TTL` | `600s` | Silence window before an untouched intent record expires. |
+| `CONCORD_RECORD_READS` | unset | Set truthy (on the hook env) to also record *read* footprint — the opt-in for exploration dedup. Off by default. |
 
 ## Scope
 

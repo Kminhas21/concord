@@ -52,6 +52,19 @@ func TestToolClassification(t *testing.T) {
 	}
 }
 
+func TestRecordReads(t *testing.T) {
+	for _, v := range []string{"1", "true", "TRUE", "yes", "on", " on "} {
+		if !hook.RecordReads(v) {
+			t.Fatalf("RecordReads(%q) = false, want true", v)
+		}
+	}
+	for _, v := range []string{"", "0", "false", "no", "off", "maybe"} {
+		if hook.RecordReads(v) {
+			t.Fatalf("RecordReads(%q) = true, want false", v)
+		}
+	}
+}
+
 func TestExtractPredictedPaths(t *testing.T) {
 	prompt := "Refactor src/auth/login.go and update pkg/db/schema.go; see e.g. the notes. Also touch src/auth/login.go again."
 	got := hook.ExtractPredictedPaths(prompt)

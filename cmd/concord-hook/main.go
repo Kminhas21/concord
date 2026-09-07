@@ -125,7 +125,13 @@ func postToolUse(ctx context.Context, in hook.Input) {
 	actor := in.ActorID()
 	switch {
 	case in.ToolName == "Read":
-		recordRead(ctx, c, actor, normalize(in.ToolInput.FilePath))
+		p := normalize(in.ToolInput.FilePath)
+		recordRead(ctx, c, actor, p)
+		// Exploration dedup: opt in with CONCORD_RECORD_READS to also add reads
+		// to the actual footprint (SPEC user story 16).
+		if hook.RecordReads(os.Getenv("CONCORD_RECORD_READS")) {
+			appendActual(ctx, c, actor, p)
+		}
 	case hook.IsEditTool(in.ToolName):
 		// Advance the actor's own read-hash to the post-edit content so it is not
 		// blocked on its own change, and record the write in the footprint.

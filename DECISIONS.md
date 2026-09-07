@@ -164,3 +164,9 @@ Format per entry:
 **Decision:** Added `ToolInput.NotebookPath` and `Input.EditPath()` (file_path, falling back to notebook_path); the hook client uses `EditPath()` for the version check and footprint on all edit tools.
 **Why:** Code review found NotebookEdit — listed as a covered edit tool (SPEC L99, `IsEditTool`) — carried an empty `file_path`, so `preToolUse` exited 0 without checking. NotebookEdit edits were silently unprotected: a real Layer-1 correctness hole.
 **Links:** code review (Spec finding 2); internal/hook.EditPath; cmd/concord-hook.
+
+## 2026-09-06 — T11: exploration read-footprint opts in via CONCORD_RECORD_READS
+**Decision:** When `CONCORD_RECORD_READS` is truthy in the hook's environment, `post-tool-use` on a `Read` also calls `AppendActual`, adding reads to the actual footprint. Off by default.
+**Why:** SPEC user story 16 / CONTEXT ("reads only in exploration mode") require read footprint for exploration dedup, but only for opted-in agents. The code review found this slipped (no ticket). An env var is the available opt-in surface: Claude Code hook config is global, so there is no per-actor hook flag — an orchestrator sets `CONCORD_RECORD_READS` in the environment of an exploration run. Verified live: a Read with the flag set appears in QueryIntent; without it, it does not.
+**Alternatives:** A per-actor server-side mode (rejected — the actor's mode isn't known at read time without extra registration); always recording reads (rejected — the measured hot path is fine but it needlessly bloats footprint for the common refactor case).
+**Links:** TICKETS T11; SPEC user story 16; internal/hook.RecordReads; cmd/concord-hook.

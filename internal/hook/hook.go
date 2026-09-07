@@ -67,6 +67,18 @@ var shellTools = map[string]bool{
 // via the git-status sweep.
 func IsShellTool(name string) bool { return shellTools[name] }
 
+// RecordReads reports whether read footprint should be recorded, from the
+// value of CONCORD_RECORD_READS. It is the opt-in for exploration dedup: off by
+// default, so refactor/mechanical agents pay only for write footprint.
+func RecordReads(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 // pathLikeToken matches whitespace-free tokens that contain a slash — the
 // conservative shape of a repo-relative path in free-text prompts.
 var pathLikeToken = regexp.MustCompile(`[A-Za-z0-9_.\-/]*/[A-Za-z0-9_.\-/]+`)
