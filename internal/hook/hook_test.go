@@ -3,6 +3,7 @@ package hook_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Kminhas21/concord/internal/hook"
@@ -99,11 +100,76 @@ func TestExtractPredictedPaths(t *testing.T) {
 	}
 }
 
+func TestReconcileTargets(t *testing.T) {
+	// before = dirty-file hashes snapshotted just before the shell command;
+	// after = dirty-file hashes just after. A path is a reconcile target iff the
+	// command actually wrote it: its content appeared or changed during the
+	// command. A file already dirty and left untouched (a human's out-of-band
+	// edit the command did not touch) must NOT be reconciled — that is the US3
+	// protection.
+	before := map[string]string{
+		"src/victim.go":    "human2", // human dirtied this before the command; command leaves it
+		"src/rewritten.go": "old3",   // dirty before; the command rewrites it
+	}
+	after := map[string]string{
+		"src/victim.go":    "human2", // unchanged by the command -> must be excluded
+		"src/rewritten.go": "new4",   // content changed -> reconcile
+		"src/created.go":   "fresh5", // new since the snapshot -> the command wrote it -> reconcile
+	}
+	got := hook.ReconcileTargets(before, after)
+	want := []string{"src/created.go", "src/rewritten.go"} // sorted, victim excluded
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ReconcileTargets = %v, want %v", got, want)
+	}
+
+	// A file dirty before but clean after (command reverted it, or git no longer
+	// lists it) is absent from `after` and must not be reconciled.
+	if got := hook.ReconcileTargets(map[string]string{"a.go": "h1"}, map[string]string{}); len(got) != 0 {
+		t.Fatalf("ReconcileTargets over an empty after = %v, want none", got)
+	}
+}
+
+func TestSnapshotName(t *testing.T) {
+	a := hook.SnapshotName("agent-7")
+	// Stable for the same actor, distinct per actor, and a filesystem-safe base
+	// name (no separators) so it lives cleanly in the temp dir.
+	if a != hook.SnapshotName("agent-7") {
+		t.Fatal("SnapshotName is not stable for one actor")
+	}
+	if a == hook.SnapshotName("agent-8") {
+		t.Fatal("SnapshotName collides across actors")
+	}
+	if strings.ContainsAny(a, `/\`) {
+		t.Fatalf("SnapshotName %q contains a path separator", a)
+	}
+	// An actor id with path-hostile characters still yields a safe name.
+	if got := hook.SnapshotName("sess/../..\\x:y"); strings.ContainsAny(got, `/\:`) {
+		t.Fatalf("SnapshotName did not sanitize hostile actor id: %q", got)
+	}
+}
+
 func TestParseGitStatusPorcelain(t *testing.T) {
 	out := " M cmd/concord/main.go\n?? new/file.go\nR  old/name.go -> new/name.go\n"
 	got := hook.ParseGitStatusPorcelain(out)
 	want := []string{"cmd/concord/main.go", "new/file.go", "new/name.go"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ParseGitStatusPorcelain = %v, want %v", got, want)
+	}
+}
+
+func TestParseGitStatusPorcelainUnquotes(t *testing.T) {
+	// git quotes paths with unusual bytes (C-style): non-ASCII is octal-escaped
+	// under the default core.quotepath, and spaces force quoting regardless. The
+	// decoded path must equal the real on-disk name, or the reconcile key never
+	// matches what the edit tool sent.
+	out := "" +
+		"?? \"caf\\303\\251.go\"\n" + // octal-escaped UTF-8 "café.go"
+		"?? \"with space.go\"\n" + // quoted only for the space, no escapes
+		"R  \"old name.go\" -> \"new name.go\"\n" + // quoted rename: take the new path
+		" M plain/unquoted.go\n" // plain path is untouched
+	got := hook.ParseGitStatusPorcelain(out)
+	want := []string{"café.go", "with space.go", "new name.go", "plain/unquoted.go"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseGitStatusPorcelain = %#v, want %#v", got, want)
 	}
 }

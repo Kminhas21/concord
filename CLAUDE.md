@@ -2,7 +2,7 @@
 
 concord is a standalone Go service, backed by Dragonfly, that coordinates concurrent coding agents. Two independent layers: a **mandatory blocking version check** that stops stale edits (correctness), and an **advisory intent registry** that reduces duplicated work (never blocks). It runs alongside a self-hosted Hindsight instance without coupling to it.
 
-**Status:** design complete, pre-implementation. `SPEC.md` is the source of truth. No code yet.
+**Status:** implemented (tickets T01–T12 complete) and under review. `SPEC.md` remains the source of truth; the daemon, `concord-hook` client, store, and RPC-seam + stress tests all exist.
 
 ## Read these first
 

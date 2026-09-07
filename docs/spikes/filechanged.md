@@ -23,8 +23,14 @@
 ## Residual gap (accepted, already permitted by the guarantee)
 
 - **Non-git working directories:** `git status --porcelain` yields nothing, so an actor's own shell writes there are not reconciled — the actor may hit a false block and must re-read. Efficiency loss, not a correctness loss.
-- **A human editor change *between* two of an agent's calls** is caught by live-hashing at `CheckEdit` (case a), so it is covered, not a gap.
+- **A human editor change *between* two of an agent's calls** is caught by live-hashing at `CheckEdit` (case a), so it is covered — **provided the sweep does not then reconcile it away.** See the correction below.
 - Anything neither hook observes remains outside the guarantee, as `SPEC.md` already states.
+
+## Correction (2026-09-07, ADR-0008): the sweep must not reconcile foreign edits
+
+The claim above that a human's between-calls edit is "covered, not a gap" was **wrong as originally built**. Case (b)'s sweep called `ReconcileFileChange` for *every* file `git status` reported dirty — and `git status` reports the whole working tree, not what the just-run command wrote. So a file the human's editor had dirtied got reconciled to the acting actor's read-hash, and that actor's next edit was then allowed to clobber it. Any shell command running between the human's edit and the agent's edit re-opened the exact hole case (a) was meant to close.
+
+**Fix (ADR-0008):** attribute the command's writes by **content delta**. A `PreToolUse` `Bash|PowerShell` hook snapshots the dirty files' hashes before the command; the post sweep reconciles only paths whose hash appeared or changed since. A file the command left untouched (the human's edit) is excluded, so live-hashing at `CheckEdit` genuinely protects it. This keeps case (b) — the actor's own shell write still reconciles — while restoring case (a).
 
 ## Impact on tickets
 

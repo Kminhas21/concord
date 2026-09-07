@@ -23,6 +23,14 @@ calls no hook, but it changes the file's hash — so an agent editing against yo
 uncommitted change is still caught. It holds no leases, TTLs, or fencing tokens,
 and needs no liveness detection or reaper.
 
+**Availability (honest scope): the version check fails *open*.** When the daemon
+is unreachable, or the hook cannot hash the target file, the `PreToolUse` hook
+exits 0 and the edit proceeds (with a stderr warning) — concord never bricks
+editing when its own machinery is down. So "mandatory" means *enforced whenever
+the daemon is reachable*, not *enforced unconditionally*. Keep the daemon running
+for the guarantee to hold; a crashed daemon degrades to no protection, not to a
+block.
+
 ## A note on Dragonfly
 
 Dragonfly is chosen for **access shape, not scale**. The state is ephemeral,
@@ -40,9 +48,10 @@ concord runs as one long-lived local daemon. Claude Code invokes the thin
 | Hook | Tool | RPC |
 |---|---|---|
 | `PreToolUse` | Edit/Write/MultiEdit/NotebookEdit | `CheckEdit` — blocks a stale edit (exit 2) |
+| `PreToolUse` | Bash/PowerShell | snapshot dirty-file hashes (for the reconcile sweep's content-delta attribution) |
 | `PostToolUse` | Read | `RecordRead` — records the read-hash |
 | `PostToolUse` | edit tools | `RecordRead` (advance own hash) + `AppendActual` |
-| `PostToolUse` | Bash/PowerShell | `git status --porcelain` → `ReconcileFileChange` |
+| `PostToolUse` | Bash/PowerShell | `git status --porcelain` → `ReconcileFileChange` for files the command itself changed |
 | `SubagentStart` | — | `RegisterPredicted` from the delegation prompt |
 
 The intent **read** path is not a hook: the orchestrator calls `QueryIntent`

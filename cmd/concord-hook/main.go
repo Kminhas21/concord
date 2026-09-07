@@ -106,9 +106,15 @@ func main() {
 	}
 }
 
-// preToolUse runs the version check on edit tools. It exits 2 to block a stale
-// edit, and fails open (exit 0) if the daemon is unreachable.
+// preToolUse runs the version check on edit tools, and on shell tools snapshots
+// the working tree's dirty-file hashes so the PostToolUse sweep can attribute
+// the command's own writes. It exits 2 to block a stale edit, and fails open
+// (exit 0) if the daemon is unreachable.
 func preToolUse(ctx context.Context, in hook.Input) {
+	if hook.IsShellTool(in.ToolName) {
+		snapshotDirtyState(ctx, in.ActorID())
+		os.Exit(0)
+	}
 	raw := in.EditPath()
 	if !hook.IsEditTool(in.ToolName) || raw == "" {
 		os.Exit(0)
@@ -199,28 +205,93 @@ func appendActual(ctx context.Context, c concordv1connect.CoordinationServiceCli
 	}))
 }
 
-// reconcileShellWrites finds what a shell command just wrote (via git) and
-// advances the actor's own read-hash for each, so it is not blocked on its own
-// out-of-band edits. Silently does nothing outside a git working tree.
+// snapshotPath is the temp-file holding an actor's before-command dirty-file
+// hashes, between its PreToolUse and PostToolUse shell hooks.
+func snapshotPath(actor string) string {
+	return filepath.Join(os.TempDir(), hook.SnapshotName(actor))
+}
+
+// dirtyHashes hashes every file git reports dirty in the working tree, keyed by
+// the canonical daemon path. ok is false only when git status itself failed; a
+// clean tree is a valid empty map (distinct from failure, which must not be
+// mistaken for "nothing was dirty before").
+func dirtyHashes(ctx context.Context, root string) (map[string]string, bool) {
+	// core.quotepath=false keeps non-ASCII paths unescaped; ParseGitStatusPorcelain
+	// still decodes any path git quotes for other reasons (e.g. a space).
+	out, err := exec.CommandContext(ctx, "git", "-C", root, "-c", "core.quotepath=false", "status", "--porcelain").Output()
+	if err != nil {
+		return nil, false
+	}
+	m := make(map[string]string)
+	for _, rel := range hook.ParseGitStatusPorcelain(string(out)) {
+		h, exists, err := hashing.HashFile(filepath.Join(root, rel))
+		if err != nil || !exists {
+			continue
+		}
+		m[canonical(rel)] = h
+	}
+	return m, true
+}
+
+// snapshotDirtyState records the working tree's dirty-file hashes just before a
+// shell command runs. On git failure it writes nothing, so the post-command
+// sweep, finding no snapshot, reconciles nothing — correctness before the
+// convenience of avoiding a false self-block.
+func snapshotDirtyState(ctx context.Context, actor string) {
+	root := repoRoot()
+	if root == "" {
+		return // not a git repo: the reconcile sweep is a no-op anyway (accepted gap)
+	}
+	before, ok := dirtyHashes(ctx, root)
+	if !ok {
+		return
+	}
+	b, err := json.Marshal(before)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(snapshotPath(actor), b, 0o600)
+}
+
+// readSnapshot loads an actor's before-command dirty-file hashes. ok is false
+// when no snapshot exists (the PreToolUse shell hook did not run, or git failed
+// then) or it is unreadable.
+func readSnapshot(path string) (map[string]string, bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	m := make(map[string]string)
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, false
+	}
+	return m, true
+}
+
+// reconcileShellWrites advances the actor's own read-hash for exactly the files
+// its shell command wrote, attributed by diffing the before-command snapshot
+// against the tree now (hook.ReconcileTargets). A file a human's editor dirtied
+// out of band, and the command left untouched, has an unchanged hash and is not
+// reconciled, so the actor cannot silently clobber it (US3). Without a snapshot
+// it reconciles nothing. Silently does nothing outside a git working tree.
 func reconcileShellWrites(ctx context.Context, c concordv1connect.CoordinationServiceClient, actor string) {
 	root := repoRoot()
 	if root == "" {
 		return // not a git repo: nothing to reconcile (accepted gap)
 	}
-	// Run git from the root so porcelain paths are root-relative.
-	out, err := exec.CommandContext(ctx, "git", "-C", root, "status", "--porcelain").Output()
-	if err != nil {
+	snap := snapshotPath(actor)
+	before, ok := readSnapshot(snap)
+	if !ok {
+		return // no before-state: cannot attribute the command's writes, so reconcile nothing
+	}
+	_ = os.Remove(snap) // one snapshot per command
+	after, ok := dirtyHashes(ctx, root)
+	if !ok {
 		return
 	}
-	for _, rel := range hook.ParseGitStatusPorcelain(string(out)) {
-		fsPath := filepath.Join(root, rel)
-		h, exists, err := hashing.HashFile(fsPath)
-		if err != nil || !exists {
-			continue
-		}
-		key := canonical(rel)
+	for _, key := range hook.ReconcileTargets(before, after) {
 		_, _ = c.ReconcileFileChange(ctx, connect.NewRequest(&concordv1.ReconcileFileChangeRequest{
-			ActorId: actor, Path: key, NewHash: h,
+			ActorId: actor, Path: key, NewHash: after[key],
 		}))
 		appendActual(ctx, c, actor, key)
 	}

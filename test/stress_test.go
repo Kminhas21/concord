@@ -159,6 +159,52 @@ func TestStress(t *testing.T) {
 		}
 	})
 
+	// H — the reconcile sweep must not clobber a foreign out-of-band edit. It now
+	// attributes a shell command's writes by content delta (hook.ReconcileTargets
+	// over a before/after snapshot), so a file a human's editor dirtied and the
+	// command left untouched is NOT reconciled and the actor stays blocked on it
+	// (US3). This probe drives the exact attribution the hook client now performs.
+	// Before the fix the whole-tree sweep reconciled every dirty file and A's
+	// edit of foo flipped from BLOCK to ALLOW.
+	t.Run("H_shell_sweep_does_not_clobber_foreign_edit", func(t *testing.T) {
+		c := stressClient(t)
+		const actor, foo, bar = "stress-H", "src/foo.go", "src/bar.go"
+
+		// A read foo at h1.
+		_, _ = c.RecordRead(ctx, connect.NewRequest(&concordv1.RecordReadRequest{ActorId: actor, Path: foo, Hash: "h1"}))
+
+		// Human edits foo in their own editor, out of band: disk is now h2.
+		// Precondition: A's edit of foo MUST block — A never saw h2.
+		pre, err := c.CheckEdit(ctx, connect.NewRequest(&concordv1.CheckEditRequest{ActorId: actor, Path: foo, CurrentHash: "h2"}))
+		if err != nil {
+			t.Fatalf("CheckEdit precondition: %v", err)
+		}
+		if pre.Msg.GetAllowed() {
+			t.Fatal("precondition failed: A not blocked on the human's out-of-band change")
+		}
+
+		// A runs a shell command that writes only bar.go. The client snapshots the
+		// dirty tree just before (foo already dirty at h2, from the human) and
+		// diffs against the tree after (foo still h2; bar newly written). Content
+		// attribution reconciles only bar — foo's hash did not change.
+		before := map[string]string{foo: "h2"}
+		after := map[string]string{foo: "h2", bar: "hbar"}
+		for _, key := range hook.ReconcileTargets(before, after) {
+			_, _ = c.ReconcileFileChange(ctx, connect.NewRequest(&concordv1.ReconcileFileChangeRequest{ActorId: actor, Path: key, NewHash: after[key]}))
+		}
+
+		// A's edit of foo is still blocked — the human's uncommitted change is safe.
+		post, err := c.CheckEdit(ctx, connect.NewRequest(&concordv1.CheckEditRequest{ActorId: actor, Path: foo, CurrentHash: "h2"}))
+		if err != nil {
+			t.Fatalf("CheckEdit post: %v", err)
+		}
+		if post.Msg.GetAllowed() {
+			t.Logf("FINDING H: the sweep reconciled a file the human dirtied — A's edit of foo flipped from BLOCK to ALLOW, defeating US3.")
+		} else {
+			t.Logf("OK H: A still blocked on the human's change; content attribution excluded foo from reconcile")
+		}
+	})
+
 	// G — TTL expiry mid-think: an agent that pauses longer than the silence
 	// window loses its intent record, so dedup goes blind for its remaining work.
 	t.Run("G_ttl_expiry_mid_think", func(t *testing.T) {
