@@ -14,11 +14,11 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** None (can start immediately).
 
-- [ ] `proto/concord/v1/coordination.proto` defines the service with a `Ping` RPC; `buf generate` produces committed code under `gen/`.
-- [ ] `cmd/concord` boots on `CONCORD_ADDR` and serves Connect over localhost.
-- [ ] `test` harness exposes `StartDragonfly(t)` and fails with a clear "start Docker" message when the daemon is unavailable.
-- [ ] A Connect-client test calls `Ping` end-to-end and passes.
-- [ ] `Makefile` targets `setup`, `generate`, `gate`; `.github/workflows/ci.yml` runs the green gate with a Dragonfly service.
+- [x] `proto/concord/v1/coordination.proto` defines the service with a `Ping` RPC; `buf generate` produces committed code under `gen/`.
+- [x] `cmd/concord` boots on `CONCORD_ADDR` and serves Connect over localhost.
+- [x] `test` harness exposes `StartDragonfly(t)` and fails with a clear "start Docker" message when the daemon is unavailable.
+- [x] A Connect-client test calls `Ping` end-to-end and passes.
+- [x] `Makefile` targets `setup`, `generate`, `gate`; `.github/workflows/ci.yml` runs the green gate with a Dragonfly service.
 
 ## T02 — `FileChanged` capability spike
 
@@ -26,9 +26,9 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** None (can start immediately).
 
-- [ ] Determine whether the `FileChanged` hook payload carries the changed file path.
-- [ ] Determine whether `FileChanged` fires before the next tool call or races it.
-- [ ] Record the finding + the fallback ("Bash writes stay outside the guarantee") in `DECISIONS.md` and `docs/spikes/filechanged.md`.
+- [x] Determine whether the `FileChanged` hook payload carries the changed file path.
+- [x] Determine whether `FileChanged` fires before the next tool call or races it.
+- [x] Record the finding + the fallback ("Bash writes stay outside the guarantee") in `DECISIONS.md` and `docs/spikes/filechanged.md`.
 
 ## T03 — Version check: `RecordRead` + `CheckEdit`
 
@@ -36,9 +36,9 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T01.
 
-- [ ] `RecordRead(actor_id, path, hash)` persists a holder's read-hash.
-- [ ] `CheckEdit` allows when the current hash equals the holder's read-hash.
-- [ ] `CheckEdit` blocks when they differ, returning a message telling the actor to re-read and retry.
+- [x] `RecordRead(actor_id, path, hash)` persists a holder's read-hash.
+- [x] `CheckEdit` allows when the current hash equals the holder's read-hash.
+- [x] `CheckEdit` blocks when they differ, returning a message telling the actor to re-read and retry.
 
 ## T04 — Version check: per-actor isolation
 
@@ -46,8 +46,8 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T03.
 
-- [ ] Actor A's `RecordRead` on a path does not satisfy actor B's `CheckEdit` on that path.
-- [ ] An actor's own prior read does satisfy its own later `CheckEdit`.
+- [x] Actor A's `RecordRead` on a path does not satisfy actor B's `CheckEdit` on that path.
+- [x] An actor's own prior read does satisfy its own later `CheckEdit`.
 
 ## T05 — Version check: reconcile an actor's own out-of-band writes (`ReconcileFileChange`)
 
@@ -55,9 +55,9 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T03. (T02 spike settled the mechanism: a synchronous `PostToolUse` `Bash|PowerShell` git-status sweep drives this, not `FileChanged`.)
 
-- [ ] `ReconcileFileChange(actor_id, path, new_hash)` advances that actor's stored read-hash for the path.
-- [ ] After reconciliation, the writing actor's `CheckEdit` on that path is allowed again.
-- [ ] Another actor's stored read-hash is unaffected — they remain blocked against the new content.
+- [x] `ReconcileFileChange(actor_id, path, new_hash)` advances that actor's stored read-hash for the path.
+- [x] After reconciliation, the writing actor's `CheckEdit` on that path is allowed again.
+- [x] Another actor's stored read-hash is unaffected — they remain blocked against the new content.
 
 ## T06 — Intent registry: `RegisterPredicted` + `QueryIntent`
 
@@ -65,9 +65,9 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T01.
 
-- [ ] `RegisterPredicted(actor_id, intent_text, predicted_paths)` writes the predicted footprint once.
-- [ ] `QueryIntent(intent_text, paths)` returns actors whose path tokens intersect (literal), plus the candidate intent strings for the caller to judge semantically.
-- [ ] `QueryIntent` never denies — it only reports.
+- [x] `RegisterPredicted(actor_id, intent_text, predicted_paths)` writes the predicted footprint once.
+- [x] `QueryIntent(intent_text, paths)` returns actors whose path tokens intersect (literal), plus the candidate intent strings for the caller to judge semantically.
+- [x] `QueryIntent` never denies — it only reports.
 
 ## T07 — Intent registry: `AppendActual` + TTL (refresh-on-touch, expire-on-silence)
 
@@ -75,9 +75,9 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T06.
 
-- [ ] `AppendActual(actor_id, path)` appends to the actual footprint.
-- [ ] Each touch refreshes the record's TTL.
-- [ ] A record untouched past the configured silence window (default 600s; short value injected in tests) expires.
+- [x] `AppendActual(actor_id, path)` appends to the actual footprint.
+- [x] Each touch refreshes the record's TTL.
+- [x] A record untouched past the configured silence window (default 600s; short value injected in tests) expires.
 
 ## T08 — Intent registry: divergence surfacing
 
@@ -85,7 +85,7 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T06, T07.
 
-- [ ] An actual footprint entry outside an actor's predicted footprint is surfaced by a query as divergence.
+- [x] An actual footprint entry outside an actor's predicted footprint is surfaced by a query as divergence.
 
 ## T09 — Hook clients + settings wiring
 
@@ -93,9 +93,9 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T03, T05, T06, T07.
 
-- [ ] `concord-hook` subcommands read hook JSON on stdin, make one RPC, set the correct exit code (exit 2 to block on stale edits): `pre-tool-use` (live-hash the target file → `CheckEdit`), `post-tool-use` (`AppendActual`; and for `Bash|PowerShell`, run `git status --porcelain` → `ReconcileFileChange` per changed file), `subagent-start` (`RegisterPredicted`).
-- [ ] Actor id is resolved as `agent_id ?? session_id` from the hook payload.
-- [ ] A sample `settings.json` wires the hooks (no `FileChanged` — see the T02 spike); a note documents that the intent read path is an orchestrator query, not a hook.
+- [x] `concord-hook` subcommands read hook JSON on stdin, make one RPC, set the correct exit code (exit 2 to block on stale edits): `pre-tool-use` (live-hash the target file → `CheckEdit`), `post-tool-use` (`AppendActual`; and for `Bash|PowerShell`, run `git status --porcelain` → `ReconcileFileChange` per changed file), `subagent-start` (`RegisterPredicted`).
+- [x] Actor id is resolved as `agent_id ?? session_id` from the hook payload.
+- [x] A sample `settings.json` wires the hooks (no `FileChanged` — see the T02 spike); a note documents that the intent read path is an orchestrator query, not a hook.
 
 ## T10 — Daemon operationalization + README
 
@@ -103,8 +103,8 @@ Legend: every ticket is `ready-for-agent`.
 
 **Blocked by:** T01.
 
-- [ ] Config via `CONCORD_ADDR` / `CONCORD_DRAGONFLY_ADDR` / `CONCORD_INTENT_TTL` with flag overrides; graceful shutdown.
-- [ ] `README.md` states the guarantee verbatim and the "Dragonfly is chosen for access shape, not scale" disclaimer.
+- [x] Config via `CONCORD_ADDR` / `CONCORD_DRAGONFLY_ADDR` / `CONCORD_INTENT_TTL` with flag overrides; graceful shutdown.
+- [x] `README.md` states the guarantee verbatim and the "Dragonfly is chosen for access shape, not scale" disclaimer.
 
 ## T11 — Exploration read-footprint opt-in (from code review)
 
