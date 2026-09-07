@@ -20,14 +20,13 @@ import (
 	"github.com/Kminhas21/concord/gen/concord/v1/concordv1connect"
 	"github.com/Kminhas21/concord/internal/hashing"
 	"github.com/Kminhas21/concord/internal/hook"
+	"github.com/Kminhas21/concord/internal/rpcaddr"
 )
-
-const defaultAddr = "127.0.0.1:8973"
 
 func daemonURL() string {
 	addr := os.Getenv("CONCORD_ADDR")
 	if addr == "" {
-		addr = defaultAddr
+		addr = rpcaddr.Default
 	}
 	return "http://" + addr
 }

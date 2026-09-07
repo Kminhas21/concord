@@ -16,12 +16,9 @@ import (
 
 	"github.com/Kminhas21/concord/gen/concord/v1/concordv1connect"
 	"github.com/Kminhas21/concord/internal/coordination"
+	"github.com/Kminhas21/concord/internal/rpcaddr"
 	"github.com/Kminhas21/concord/internal/store"
 )
-
-// defaultAddr is the loopback address the daemon listens on when CONCORD_ADDR
-// is unset. Loopback only: concord is one daemon per machine, never networked.
-const defaultAddr = "127.0.0.1:8973"
 
 // defaultDragonflyAddr is where the daemon expects Dragonfly when
 // CONCORD_DRAGONFLY_ADDR is unset.
@@ -38,7 +35,7 @@ type config struct {
 }
 
 func configFromEnv() (config, error) {
-	cfg := config{addr: defaultAddr, dragonflyAddr: defaultDragonflyAddr, intentTTL: defaultIntentTTL}
+	cfg := config{addr: rpcaddr.Default, dragonflyAddr: defaultDragonflyAddr, intentTTL: defaultIntentTTL}
 	if v := os.Getenv("CONCORD_ADDR"); v != "" {
 		cfg.addr = v
 	}
