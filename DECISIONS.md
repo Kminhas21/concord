@@ -159,3 +159,8 @@ Format per entry:
 **Why:** A test cancels the context and asserts `run` returns, deterministically verifying graceful shutdown with no OS-signal delivery — which is unreliable on Windows (Git Bash `kill -TERM` hard-terminates rather than delivering a catchable signal). Passing the listener in lets the test bind `127.0.0.1:0` and learn the port.
 **Alternatives:** Testing via real signals (rejected — flaky/undeliverable on Windows); no shutdown test (rejected — the one ops behaviour worth proving).
 **Links:** TICKETS T10; cmd/concord.
+
+## 2026-09-06 — Review fix: NotebookEdit targets notebook_path, not file_path
+**Decision:** Added `ToolInput.NotebookPath` and `Input.EditPath()` (file_path, falling back to notebook_path); the hook client uses `EditPath()` for the version check and footprint on all edit tools.
+**Why:** Code review found NotebookEdit — listed as a covered edit tool (SPEC L99, `IsEditTool`) — carried an empty `file_path`, so `preToolUse` exited 0 without checking. NotebookEdit edits were silently unprotected: a real Layer-1 correctness hole.
+**Links:** code review (Spec finding 2); internal/hook.EditPath; cmd/concord-hook.

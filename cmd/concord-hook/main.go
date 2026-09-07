@@ -93,10 +93,10 @@ func main() {
 // preToolUse runs the version check on edit tools. It exits 2 to block a stale
 // edit, and fails open (exit 0) if the daemon is unreachable.
 func preToolUse(ctx context.Context, in hook.Input) {
-	if !hook.IsEditTool(in.ToolName) || in.ToolInput.FilePath == "" {
+	if !hook.IsEditTool(in.ToolName) || in.EditPath() == "" {
 		os.Exit(0)
 	}
-	path := normalize(in.ToolInput.FilePath)
+	path := normalize(in.EditPath())
 	currentHash, _, err := hashing.HashFile(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "concord-hook: hashing", path, ":", err)
@@ -129,7 +129,7 @@ func postToolUse(ctx context.Context, in hook.Input) {
 	case hook.IsEditTool(in.ToolName):
 		// Advance the actor's own read-hash to the post-edit content so it is not
 		// blocked on its own change, and record the write in the footprint.
-		np := normalize(in.ToolInput.FilePath)
+		np := normalize(in.EditPath())
 		recordRead(ctx, c, actor, np)
 		appendActual(ctx, c, actor, np)
 	case hook.IsShellTool(in.ToolName):

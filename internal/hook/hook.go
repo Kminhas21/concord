@@ -11,7 +11,10 @@ import (
 // ToolInput is the subset of a tool call concord reads.
 type ToolInput struct {
 	FilePath string `json:"file_path"`
-	Command  string `json:"command"`
+	// NotebookPath is the target of the NotebookEdit tool, which does not use
+	// file_path.
+	NotebookPath string `json:"notebook_path"`
+	Command      string `json:"command"`
 }
 
 // Input is the subset of Claude Code hook stdin JSON that concord consumes.
@@ -32,6 +35,17 @@ func (i Input) ActorID() string {
 		return i.AgentID
 	}
 	return i.SessionID
+}
+
+// EditPath returns the file an edit tool targets: file_path for most edit tools,
+// falling back to notebook_path for NotebookEdit. Without this fallback,
+// NotebookEdit edits would carry an empty path and silently skip the version
+// check.
+func (i Input) EditPath() string {
+	if i.ToolInput.FilePath != "" {
+		return i.ToolInput.FilePath
+	}
+	return i.ToolInput.NotebookPath
 }
 
 var editTools = map[string]bool{

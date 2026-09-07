@@ -28,6 +28,21 @@ func TestInputParsesToolFields(t *testing.T) {
 	}
 }
 
+func TestEditPathFallsBackToNotebookPath(t *testing.T) {
+	// Most edit tools use file_path.
+	if got := (hook.Input{ToolInput: hook.ToolInput{FilePath: "src/a.go"}}).EditPath(); got != "src/a.go" {
+		t.Fatalf("EditPath (file_path) = %q, want src/a.go", got)
+	}
+	// NotebookEdit passes notebook_path instead of file_path.
+	var nb hook.Input
+	if err := json.Unmarshal([]byte(`{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"nb.ipynb"}}`), &nb); err != nil {
+		t.Fatal(err)
+	}
+	if got := nb.EditPath(); got != "nb.ipynb" {
+		t.Fatalf("EditPath (notebook_path) = %q, want nb.ipynb — NotebookEdit would bypass the version check", got)
+	}
+}
+
 func TestToolClassification(t *testing.T) {
 	if !hook.IsEditTool("Write") || hook.IsEditTool("Read") {
 		t.Fatal("edit-tool classification wrong")
