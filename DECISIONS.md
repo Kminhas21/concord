@@ -131,3 +131,9 @@ Format per entry:
 **Why:** Divergence is the primary coupling signal (SPEC §2); surfacing the specific paths tells the caller *what* left scope, not just that something did. Computing it at query time keeps records simple and always-consistent with the current footprint.
 **Alternatives:** A single `diverged` bool (rejected — loses which paths); precomputing/storing divergence (rejected — must recompute on every predicted/actual change anyway).
 **Links:** TICKETS T08; ADR-0006; internal/coordination/overlap.go.
+
+## 2026-09-06 — T09a: client logic lives in pure packages, tested off the seam
+**Decision:** The hook client's real logic — file hashing (`internal/hashing`), hook-JSON parsing, actor-id resolution, tool classification, and `git status --porcelain` parsing (`internal/hook`) — lives in pure packages with plain unit tests. `cmd/concord-hook` (T09b) stays thin glue over them plus the generated Connect client.
+**Why:** The RPC seam is for the service; the hook client also carries non-trivial logic that would otherwise be untested "glue." Isolating it as pure functions makes it testable without a daemon or Docker, keeping the CLI itself dumb enough to not need its own tests.
+**Detail:** git-status rename lines (`R old -> new`) resolve to the new path.
+**Links:** TICKETS T09; ADR-0005 (actor id).
