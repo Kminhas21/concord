@@ -21,6 +21,7 @@ import (
 	concordv1 "github.com/Kminhas21/concord/gen/concord/v1"
 	"github.com/Kminhas21/concord/gen/concord/v1/concordv1connect"
 	"github.com/Kminhas21/concord/internal/coordination"
+	"github.com/Kminhas21/concord/internal/hook"
 	"github.com/Kminhas21/concord/internal/store"
 )
 
@@ -81,37 +82,44 @@ func TestStress(t *testing.T) {
 		}
 	})
 
-	// B — predicted paths come from a prompt (repo-relative); actual/query paths
-	// come from hooks (absolute). Do they overlap for the SAME file?
+	// B — predicted comes from a prompt (repo-relative); actual/query comes from
+	// hooks (absolute). After the fix the client canonicalizes both to
+	// repo-relative, so they overlap for the same file. This probe applies that
+	// canonicalization to the query path, as the hook client now does.
 	t.Run("B_relative_predicted_vs_absolute_query", func(t *testing.T) {
 		c := stressClient(t)
 		_, _ = c.RegisterPredicted(ctx, connect.NewRequest(&concordv1.RegisterPredictedRequest{
 			ActorId: "stress-B", IntentText: "refactor auth", PredictedPaths: []string{"src/auth/login.go"},
 		}))
-		m := sQuery(t, c, "stress-B", "C:/repo/src/auth/login.go")
+		qpath := hook.RepoRelative("/repo", "/repo/src/auth/login.go") // client canonicalization
+		m := sQuery(t, c, "stress-B", qpath)
 		if m == nil || !m.GetPathOverlap() {
-			t.Logf("FINDING B: predicted %q (relative, from prompt) does NOT overlap query %q (absolute, from hooks) for the same file — path-scale mismatch defeats pre-delegation dedup", "src/auth/login.go", "C:/repo/src/auth/login.go")
+			t.Logf("FINDING B: predicted (relative) does NOT overlap query %q — path-scale mismatch", qpath)
 		} else {
-			t.Logf("OK B: relative/absolute overlap matched")
+			t.Logf("OK B: canonicalization aligns predicted(relative) and query — overlap matched")
 		}
 	})
 
-	// D — case-only path difference. On Windows/macOS these are the same file.
+	// D — case-only path difference names one file on Windows/macOS. After the
+	// fix the client case-folds keys on those platforms; this probe applies that
+	// fold, as the hook client now does.
 	t.Run("D_case_insensitive_fs", func(t *testing.T) {
 		c := stressClient(t)
+		readKey := hook.FoldCase("C:/Repo/Foo.txt", true) // client fold on case-insensitive FS
+		editKey := hook.FoldCase("C:/Repo/foo.txt", true)
 		_, _ = c.RecordRead(ctx, connect.NewRequest(&concordv1.RecordReadRequest{
-			ActorId: "stress-D", Path: "C:/Repo/Foo.txt", Hash: "h1",
+			ActorId: "stress-D", Path: readKey, Hash: "h1",
 		}))
 		resp, err := c.CheckEdit(ctx, connect.NewRequest(&concordv1.CheckEditRequest{
-			ActorId: "stress-D", Path: "C:/Repo/foo.txt", CurrentHash: "h1",
+			ActorId: "stress-D", Path: editKey, CurrentHash: "h1",
 		}))
 		if err != nil {
 			t.Fatalf("CheckEdit: %v", err)
 		}
 		if !resp.Msg.GetAllowed() {
-			t.Logf("FINDING D: read of Foo.txt does not satisfy edit of foo.txt — path keys are case-sensitive, so one file becomes two keys on a case-insensitive filesystem (false block). msg=%q", resp.Msg.GetMessage())
+			t.Logf("FINDING D: read of Foo.txt does not satisfy edit of foo.txt — case-sensitive keys. msg=%q", resp.Msg.GetMessage())
 		} else {
-			t.Logf("OK D: case-insensitive match")
+			t.Logf("OK D: case-folded keys match")
 		}
 	})
 

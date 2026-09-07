@@ -176,3 +176,12 @@ Format per entry:
 **Why (diagnosis):** the old `AppendActual` did GET-json → append-in-Go → SET-json; concurrent touches on one actor raced (last-writer-wins). The stress harness reproduced it deterministically — 100 concurrent appends kept **3 of 100** paths. `SADD` is atomic and set-valued, so concurrent appends neither race nor duplicate. Confirmed: the regression test (`TestAppendActualIsAtomicUnderConcurrency`, 50/50) and the stress probe (100/100) both pass.
 **Consequence:** the stored JSON doc no longer carries actual paths. A subagent's own calls are serial, but subagents under one session interleave — the real contended case.
 **Links:** docs/testing/stress-findings.md (A); internal/store/store.go; TICKETS T07.
+
+## 2026-09-07 — Bugs B & D fix: the hook client canonicalizes every path
+**Decision:** `concord-hook` maps every path to one daemon key via `canonical()`: **repo-relative** (`hook.RepoRelative`, using `git rev-parse --show-toplevel`) and **case-folded** on Windows/macOS (`hook.FoldCase`). The real filesystem path is still used for hashing; only the *key* is canonicalized. Orchestrators must query with repo-relative paths too (documented in `docs/hooks/orchestrator-query.md`).
+**Why (diagnosis):**
+- **B:** predicted paths come from the delegation prompt (repo-relative) while actual/query paths came from hooks (absolute via `filepath.Abs`), so they shared no tokens — pre-delegation dedup never fired and everything looked divergent. Unifying on repo-relative aligns them. Verified live: predicted + actual both `src/auth/login.go`, `overlap=true`, `divergent=none`.
+- **D:** path keys were case-sensitive, so on a case-insensitive filesystem `Foo.txt` and `foo.txt` became two keys (false blocks, missed overlap). Folding case on those platforms collapses them to one key.
+**Fix seam:** the bugs are client-side (the service is correct given consistent input), so the regressions are pure unit tests (`TestRepoRelative`, `TestFoldCase`) plus the stress probes B/D, updated to apply the same canonicalization and now reporting OK. `git status --porcelain` is now run with `-C <root>` so its paths are root-relative and reconcile keys match.
+**Consequence:** in a non-git directory `repoRoot()` is "" and paths stay absolute — the same accepted gap as the shell-reconcile sweep.
+**Links:** docs/testing/stress-findings.md (B, D); internal/hook.RepoRelative/FoldCase; cmd/concord-hook.canonical.

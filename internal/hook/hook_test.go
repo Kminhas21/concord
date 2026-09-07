@@ -52,6 +52,31 @@ func TestToolClassification(t *testing.T) {
 	}
 }
 
+func TestRepoRelative(t *testing.T) {
+	cases := []struct{ root, in, want string }{
+		{"/repo", "/repo/src/a.go", "src/a.go"},
+		{`C:\repo`, `C:\repo\src\a.go`, "src/a.go"},   // backslashes normalized
+		{"/repo", "/other/x.go", "/other/x.go"},       // outside root: unchanged
+		{"", "/abs/x.go", "/abs/x.go"},                // no root: unchanged
+		{"/repo", "already/rel.go", "already/rel.go"}, // already relative: unchanged
+		{"/repo", "/repo", "."},
+	}
+	for _, c := range cases {
+		if got := hook.RepoRelative(c.root, c.in); got != c.want {
+			t.Errorf("RepoRelative(%q,%q) = %q, want %q", c.root, c.in, got, c.want)
+		}
+	}
+}
+
+func TestFoldCase(t *testing.T) {
+	if got := hook.FoldCase("Src/A.go", true); got != "src/a.go" {
+		t.Errorf("FoldCase(insensitive) = %q, want src/a.go", got)
+	}
+	if got := hook.FoldCase("Src/A.go", false); got != "Src/A.go" {
+		t.Errorf("FoldCase(sensitive) = %q, want Src/A.go", got)
+	}
+}
+
 func TestRecordReads(t *testing.T) {
 	for _, v := range []string{"1", "true", "TRUE", "yes", "on", " on "} {
 		if !hook.RecordReads(v) {

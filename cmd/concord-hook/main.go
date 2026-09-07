@@ -14,6 +14,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
 
 	"connectrpc.com/connect"
 	concordv1 "github.com/Kminhas21/concord/gen/concord/v1"
@@ -35,19 +38,33 @@ func newClient() concordv1connect.CoordinationServiceClient {
 	return concordv1connect.NewCoordinationServiceClient(http.DefaultClient, daemonURL())
 }
 
-// normalize resolves a path to an absolute, cleaned, forward-slash form so that
-// keys agree regardless of the caller: edit tools pass absolute file_path,
-// while `git status --porcelain` yields repo-relative paths (resolved against
-// the hook's working directory, which is the repo root).
-func normalize(p string) string {
-	if p == "" {
-		return ""
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		abs = p
-	}
-	return filepath.ToSlash(filepath.Clean(abs))
+var (
+	rootOnce sync.Once
+	rootVal  string
+)
+
+// repoRoot returns the git working-tree root of the hook's working directory,
+// or "" when not in a git repo. Memoized for the process.
+func repoRoot() string {
+	rootOnce.Do(func() {
+		out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+		if err == nil {
+			rootVal = strings.TrimSpace(string(out))
+		}
+	})
+	return rootVal
+}
+
+// caseInsensitiveFS is true on filesystems where paths differing only in case
+// name the same file (Windows, macOS).
+var caseInsensitiveFS = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+
+// canonical is the daemon key for a path: repo-relative, forward-slash, and
+// case-folded on case-insensitive filesystems, so every ingestion point (edit
+// tools' absolute file_path, git status' root-relative paths) agrees on one key
+// for one file.
+func canonical(p string) string {
+	return hook.FoldCase(hook.RepoRelative(repoRoot(), p), caseInsensitiveFS)
 }
 
 func readInput() (hook.Input, error) {
@@ -92,18 +109,18 @@ func main() {
 // preToolUse runs the version check on edit tools. It exits 2 to block a stale
 // edit, and fails open (exit 0) if the daemon is unreachable.
 func preToolUse(ctx context.Context, in hook.Input) {
-	if !hook.IsEditTool(in.ToolName) || in.EditPath() == "" {
+	raw := in.EditPath()
+	if !hook.IsEditTool(in.ToolName) || raw == "" {
 		os.Exit(0)
 	}
-	path := normalize(in.EditPath())
-	currentHash, _, err := hashing.HashFile(path)
+	currentHash, _, err := hashing.HashFile(raw) // hash the real file on disk
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "concord-hook: hashing", path, ":", err)
+		fmt.Fprintln(os.Stderr, "concord-hook: hashing", raw, ":", err)
 		os.Exit(0)
 	}
 	resp, err := newClient().CheckEdit(ctx, connect.NewRequest(&concordv1.CheckEditRequest{
 		ActorId:     in.ActorID(),
-		Path:        path,
+		Path:        canonical(raw),
 		CurrentHash: currentHash,
 	}))
 	if err != nil {
@@ -124,19 +141,21 @@ func postToolUse(ctx context.Context, in hook.Input) {
 	actor := in.ActorID()
 	switch {
 	case in.ToolName == "Read":
-		p := normalize(in.ToolInput.FilePath)
-		recordRead(ctx, c, actor, p)
+		raw := in.ToolInput.FilePath
+		key := canonical(raw)
+		recordRead(ctx, c, actor, key, raw)
 		// Exploration dedup: opt in with CONCORD_RECORD_READS to also add reads
 		// to the actual footprint (SPEC user story 16).
 		if hook.RecordReads(os.Getenv("CONCORD_RECORD_READS")) {
-			appendActual(ctx, c, actor, p)
+			appendActual(ctx, c, actor, key)
 		}
 	case hook.IsEditTool(in.ToolName):
 		// Advance the actor's own read-hash to the post-edit content so it is not
 		// blocked on its own change, and record the write in the footprint.
-		np := normalize(in.EditPath())
-		recordRead(ctx, c, actor, np)
-		appendActual(ctx, c, actor, np)
+		raw := in.EditPath()
+		key := canonical(raw)
+		recordRead(ctx, c, actor, key, raw)
+		appendActual(ctx, c, actor, key)
 	case hook.IsShellTool(in.ToolName):
 		reconcileShellWrites(ctx, c, actor)
 	}
@@ -156,16 +175,18 @@ func subagentStart(ctx context.Context, in hook.Input) {
 	os.Exit(0)
 }
 
-func recordRead(ctx context.Context, c concordv1connect.CoordinationServiceClient, actor, path string) {
-	if path == "" {
+// recordRead hashes the file at fsPath and records it under the daemon key
+// (which is the canonical, repo-relative form of the same path).
+func recordRead(ctx context.Context, c concordv1connect.CoordinationServiceClient, actor, key, fsPath string) {
+	if key == "" {
 		return
 	}
-	h, exists, err := hashing.HashFile(path)
+	h, exists, err := hashing.HashFile(fsPath)
 	if err != nil || !exists {
 		return
 	}
 	_, _ = c.RecordRead(ctx, connect.NewRequest(&concordv1.RecordReadRequest{
-		ActorId: actor, Path: path, Hash: h,
+		ActorId: actor, Path: key, Hash: h,
 	}))
 }
 
@@ -182,19 +203,25 @@ func appendActual(ctx context.Context, c concordv1connect.CoordinationServiceCli
 // advances the actor's own read-hash for each, so it is not blocked on its own
 // out-of-band edits. Silently does nothing outside a git working tree.
 func reconcileShellWrites(ctx context.Context, c concordv1connect.CoordinationServiceClient, actor string) {
-	out, err := exec.CommandContext(ctx, "git", "status", "--porcelain").Output()
+	root := repoRoot()
+	if root == "" {
+		return // not a git repo: nothing to reconcile (accepted gap)
+	}
+	// Run git from the root so porcelain paths are root-relative.
+	out, err := exec.CommandContext(ctx, "git", "-C", root, "status", "--porcelain").Output()
 	if err != nil {
 		return
 	}
-	for _, raw := range hook.ParseGitStatusPorcelain(string(out)) {
-		path := normalize(raw)
-		h, exists, err := hashing.HashFile(path)
+	for _, rel := range hook.ParseGitStatusPorcelain(string(out)) {
+		fsPath := filepath.Join(root, rel)
+		h, exists, err := hashing.HashFile(fsPath)
 		if err != nil || !exists {
 			continue
 		}
+		key := canonical(rel)
 		_, _ = c.ReconcileFileChange(ctx, connect.NewRequest(&concordv1.ReconcileFileChangeRequest{
-			ActorId: actor, Path: path, NewHash: h,
+			ActorId: actor, Path: key, NewHash: h,
 		}))
-		appendActual(ctx, c, actor, path)
+		appendActual(ctx, c, actor, key)
 	}
 }

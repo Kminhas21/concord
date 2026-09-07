@@ -5,7 +5,10 @@ It reports `FINDING` (a real weakness) or `OK` per probe and never fails the bui
 
 These are the weak points the version check + intent registry actually have, ranked.
 
-## A — Concurrent `AppendActual` loses ~97% of paths (SEVERE, fixable)
+> **Status (2026-09-07):** A, B, and D are **FIXED** and their stress probes now report OK.
+> G is an accepted design limitation (see below). F was never a problem.
+
+## A — Concurrent `AppendActual` loses ~97% of paths (SEVERE) — ✅ FIXED
 
 `AppendActual` does read-record → append-in-Go → write-record. Under concurrency the
 read-modify-write races: 100 concurrent touches on one actor kept **3 of 100** paths.
@@ -19,7 +22,7 @@ read-modify-write races: 100 concurrent touches on one actor kept **3 of 100** p
   in `ListIntents`; or do the append in a Lua script / `WATCH`+`MULTI`. A single actor's
   own tool calls are serial, but subagents under one session can interleave, so this is real.
 
-## B — Predicted (relative) never overlaps actual/query (absolute) (SEVERE for dedup)
+## B — Predicted (relative) never overlaps actual/query (absolute) (SEVERE) — ✅ FIXED
 
 Predicted paths come from the delegation **prompt** and are repo-relative
 (`src/auth/login.go`). Actual and query paths come from **hooks** and are absolute
@@ -35,7 +38,7 @@ Predicted paths come from the delegation **prompt** and are repo-relative
   sending, and the orchestrator queries with repo-relative paths too. Absolute is the wrong
   common denominator (predicted paths from prompts may not exist on disk to absolutize).
 
-## D — Case-insensitive filesystems split one file into many keys (MEDIUM, live on Windows/macOS)
+## D — Case-insensitive filesystems split one file into many keys (MEDIUM) — ✅ FIXED
 
 A read of `C:/Repo/Foo.txt` does not satisfy an edit of `C:/Repo/foo.txt` — the keys differ
 by case though the OS treats them as one file.

@@ -79,6 +79,37 @@ func RecordReads(v string) bool {
 	}
 }
 
+// RepoRelative maps a path to a form relative to the repo root, using
+// forward slashes. A path already relative, or outside the root, or given no
+// root, is returned normalized but unchanged. This gives every ingestion point
+// (edit tools pass absolute paths; git status passes root-relative ones) one
+// common path scale, so predicted and actual footprints compare correctly.
+func RepoRelative(root, p string) string {
+	p = strings.TrimRight(strings.ReplaceAll(p, `\`, "/"), "/")
+	if root == "" {
+		return p
+	}
+	root = strings.TrimRight(strings.ReplaceAll(root, `\`, "/"), "/")
+	switch {
+	case p == root:
+		return "."
+	case strings.HasPrefix(p, root+"/"):
+		return p[len(root)+1:]
+	default:
+		return p
+	}
+}
+
+// FoldCase lowercases a path key on case-insensitive filesystems (Windows,
+// macOS) so that Foo.txt and foo.txt resolve to the same concord key; on
+// case-sensitive filesystems the path is returned unchanged.
+func FoldCase(p string, caseInsensitive bool) string {
+	if caseInsensitive {
+		return strings.ToLower(p)
+	}
+	return p
+}
+
 // pathLikeToken matches whitespace-free tokens that contain a slash — the
 // conservative shape of a repo-relative path in free-text prompts.
 var pathLikeToken = regexp.MustCompile(`[A-Za-z0-9_.\-/]*/[A-Za-z0-9_.\-/]+`)

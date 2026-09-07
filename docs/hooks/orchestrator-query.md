@@ -33,3 +33,8 @@ curl -sS \
 The response lists active intents, each with `pathOverlap` and any
 `divergentPaths`. The orchestrator decides what to do with them; concord never
 denies.
+
+**Use repo-relative paths.** concord keys footprints on repo-relative,
+forward-slash paths (the hook client canonicalizes with `git rev-parse
+--show-toplevel`, case-folded on Windows/macOS). Query with the same form —
+`src/auth/login.go`, not an absolute path — or overlaps will silently miss.
