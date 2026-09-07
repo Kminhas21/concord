@@ -153,3 +153,9 @@ Format per entry:
 **Decision:** `ExtractPredictedPaths` pulls slash-containing tokens from the delegation prompt. It targets repo-relative paths (`src/auth/login.go`); a Windows drive-letter absolute path (`C:/...`) is mangled because `:` is not a path char. Left as-is.
 **Why:** The predicted footprint is advisory — a missed or malformed predicted path only weakens dedup, never correctness — and real delegation prompts use repo-relative paths. Handling drive letters isn't worth the regex complexity.
 **Links:** TICKETS T09; internal/hook.ExtractPredictedPaths.
+
+## 2026-09-06 — T10: serving is a testable run(ctx, listener, cfg); signals only in main
+**Decision:** The daemon's serve-and-shutdown lifecycle lives in `run(ctx, ln, cfg)`, which serves on a caller-supplied listener until the context is cancelled, then calls `srv.Shutdown` and closes the store. `main` builds the config, opens the listener, and derives ctx from `signal.NotifyContext(os.Interrupt, SIGTERM)`.
+**Why:** A test cancels the context and asserts `run` returns, deterministically verifying graceful shutdown with no OS-signal delivery — which is unreliable on Windows (Git Bash `kill -TERM` hard-terminates rather than delivering a catchable signal). Passing the listener in lets the test bind `127.0.0.1:0` and learn the port.
+**Alternatives:** Testing via real signals (rejected — flaky/undeliverable on Windows); no shutdown test (rejected — the one ops behaviour worth proving).
+**Links:** TICKETS T10; cmd/concord.
