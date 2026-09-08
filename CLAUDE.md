@@ -1,6 +1,6 @@
 # CLAUDE.md — concord
 
-concord is a standalone Go service, backed by Dragonfly, that coordinates concurrent coding agents. Two independent layers: a **mandatory blocking version check** that stops stale edits (correctness), and an **advisory intent registry** that reduces duplicated work (never blocks). It runs alongside a self-hosted Hindsight instance without coupling to it.
+concord is a standalone Go service, backed by Dragonfly, that coordinates concurrent coding agents. Two independent layers: a **blocking version check** that stops stale edits (correctness; enforced whenever the daemon is reachable — it fails *open* if the daemon is down or the file can't be hashed, so it is not an unconditional guarantee), and an **advisory intent registry** that reduces duplicated work (never blocks). It runs alongside a self-hosted Hindsight instance without coupling to it.
 
 **Status:** implemented (tickets T01–T12 complete) and under review. `SPEC.md` remains the source of truth; the daemon, `concord-hook` client, store, and RPC-seam + stress tests all exist.
 
