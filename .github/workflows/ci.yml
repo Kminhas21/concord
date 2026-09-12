@@ -1,19 +1,45 @@
 name: ci
 
+# WHEN this runs.
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [main] # every push to main
+  pull_request: # every PR, against any base branch
+  workflow_dispatch: {} # a manual "Run workflow" button in the Actions tab
+
+# CONCURRENCY: if you push twice quickly to the same branch/PR, cancel the older
+# in-flight run so CI only finishes the newest commit. Saves minutes and gives a
+# faster signal. The group key is per-ref, so different branches don't cancel
+# each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# PERMISSIONS: least privilege. CI only needs to read the repo; it gets no write
+# token. Widen this only when a job actually needs it (e.g. a release job).
+permissions:
+  contents: read
+
+# One place to bump the Go version for every job.
+env:
+  GO_VERSION: "1.26.5"
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # gate — the green gate: codegen is current, formatting/vet/build, and tests
+  # (which boot a real ephemeral Dragonfly via testcontainers on the runner's
+  # Docker). This is the check to require in branch protection.
+  # ---------------------------------------------------------------------------
   gate:
+    name: gate (build + tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.5"
+          go-version: ${{ env.GO_VERSION }}
+          cache: true # cache the Go module + build cache, keyed on go.sum
 
       - name: Install codegen tools
         run: |
@@ -21,6 +47,8 @@ jobs:
           go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
           go install github.com/bufbuild/buf/cmd/buf@latest
 
+      # Regenerate from the .proto and fail if the committed gen/ differs — this
+      # is what keeps the generated Connect code honest with the contract.
       - name: Verify generated code is current
         run: |
           buf generate
@@ -34,7 +62,47 @@ jobs:
           go vet ./...
           go build ./...
 
-      # Tests boot a real ephemeral Dragonfly via testcontainers; the ubuntu
-      # runner provides the Docker daemon they need.
       - name: Test
         run: go test ./...
+
+  # ---------------------------------------------------------------------------
+  # lint — golangci-lint (govet, errcheck, staticcheck, ineffassign, unused,
+  # misspell). Config lives in .golangci.yml. Kept a separate job so a lint
+  # failure is distinct from a build/test failure and runs in parallel.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: lint (golangci-lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false # the golangci-lint action manages its own cache
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8 # pin for reproducible CI; bump deliberately
+
+  # ---------------------------------------------------------------------------
+  # race — the same tests under the data-race detector. Separate job because it
+  # is slower and needs cgo. The race detector requires a C toolchain and
+  # CGO_ENABLED=1; the ubuntu runner has gcc and defaults CGO on, so it "just
+  # works" here even though it won't build on a machine without cgo (e.g. a
+  # stock Windows dev box). This is the check that catches concurrency bugs like
+  # the one the AppendActual store fix addressed.
+  # ---------------------------------------------------------------------------
+  race:
+    name: race (go test -race)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Test with the race detector
+        run: go test -race ./...
