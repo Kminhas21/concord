@@ -109,6 +109,13 @@ jobs:
       - uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64.8 # pin for reproducible CI; bump deliberately
+          # Build golangci-lint from source with the runner's Go toolchain
+          # instead of downloading the prebuilt binary. golangci-lint refuses to
+          # run when go.mod targets a newer Go than the Go it was *built* with,
+          # and the prebuilt v1.64.8 binary is built with go1.24 while this
+          # module targets 1.26.5. goinstall compiles it with 1.26.5, so the
+          # build-Go >= target-Go guard is satisfied.
+          install-mode: goinstall
 
   # ---------------------------------------------------------------------------
   # race — the same tests under the data-race detector. Linux only: the detector

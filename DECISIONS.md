@@ -230,3 +230,9 @@ Format per entry:
 **Why:** Windows CI exists to catch the OS-sensitive path canonicalization (RepoRelative/FoldCase); those live in pure, Docker-free packages. testcontainers' Dragonfly is a Linux container and Windows runners can't run it reliably, so the integration tests stay Linux-only. Verified on a real Windows box (this dev machine): `go build ./...`, `go vet ./...`, and `go test ./internal/hook/... ./internal/hashing/... ./cmd/concord` all pass.
 **Alternatives:** full suite on Windows (rejected — flaky/slow Linux-container support); Windows build-only (rejected — wouldn't exercise the OS-sensitive logic); a dedicated windows job instead of a matrix (rejected — user chose the matrix to learn it).
 **Links:** .github/workflows/ci.yml; DECISIONS "CI stages 1-2".
+
+## 2026-09-16 — CI lint fix: golangci-lint via goinstall (build-Go vs target-Go)
+**Decision:** The `lint` job pins golangci-lint `v1.64.8` but sets `install-mode: goinstall` so the action compiles it with the runner's Go toolchain rather than downloading the prebuilt binary.
+**Why:** the first PR run failed only on lint: "the Go language version (go1.24) used to build golangci-lint is lower than the targeted Go version (1.26.5)". golangci-lint refuses to run when `go.mod`'s `go` directive is newer than the Go it was *built* with. The prebuilt v1.64.8 binary is built with go1.24; this module targets 1.26.5. It passed locally only because the local binary was `go install`-ed with Go 1.26.5. `goinstall` reproduces that in CI. Go 1.26 is new enough that no prebuilt golangci-lint binary is built with it yet.
+**Alternatives:** bump to a golangci-lint release built with go1.26 (none exists yet); move to golangci-lint v2 + action v7 + v2 config (larger change, deferred); lower the go.mod version (rejected — don't downgrade the project).
+**Links:** .github/workflows/ci.yml (lint job); PR #1 first run.
