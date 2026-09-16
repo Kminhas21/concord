@@ -4,7 +4,10 @@
 package hook
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -131,9 +134,41 @@ func ExtractPredictedPaths(prompt string) []string {
 	return out
 }
 
+// SnapshotName is the base filename of the per-actor shell snapshot: the
+// before-command dirty-file hashes the reconcile sweep diffs against. It is
+// derived from a hash of the actor id so any actor id yields one stable,
+// filesystem-safe name with no separators.
+func SnapshotName(actor string) string {
+	sum := sha256.Sum256([]byte(actor))
+	return "concord-shell-" + hex.EncodeToString(sum[:]) + ".json"
+}
+
+// ReconcileTargets attributes a shell command's writes by content delta. Given
+// the hashes of the dirty files just before the command (before) and just after
+// (after), it returns the paths the command actually wrote: those present in
+// after whose hash appeared or changed since before. A file already dirty and
+// left untouched by the command — a human's out-of-band edit, say — has an equal
+// before/after hash and is excluded, so reconciling never advances the actor's
+// read-hash onto a change it did not make (the US3 protection). The result is
+// sorted for determinism.
+func ReconcileTargets(before, after map[string]string) []string {
+	var out []string
+	for p, h := range after {
+		if before[p] != h {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // ParseGitStatusPorcelain extracts the changed file paths from the output of
 // `git status --porcelain`. Each line is "XY <path>", with renames written as
-// "XY <old> -> <new>"; for a rename the new path is taken.
+// "XY <old> -> <new>"; for a rename the new path is taken. git C-quotes any path
+// with unusual bytes (a non-ASCII byte is octal-escaped under the default
+// core.quotepath; a space forces quoting regardless), so a quoted field is
+// decoded back to the real on-disk name — otherwise the reconcile key would
+// never match what the edit tool sent.
 func ParseGitStatusPorcelain(out string) []string {
 	var paths []string
 	for _, line := range strings.Split(out, "\n") {
@@ -144,10 +179,62 @@ func ParseGitStatusPorcelain(out string) []string {
 		if idx := strings.Index(p, " -> "); idx >= 0 {
 			p = p[idx+len(" -> "):]
 		}
-		p = strings.Trim(p, `"`)
+		p = unquoteGitPath(p)
 		if p != "" {
 			paths = append(paths, p)
 		}
 	}
 	return paths
+}
+
+// unquoteGitPath decodes a git C-quoted path ("...") back to its literal bytes,
+// handling the standard escapes and \NNN octal (which reconstructs octal-escaped
+// UTF-8). A path git left unquoted is returned unchanged.
+func unquoteGitPath(s string) string {
+	if len(s) < 2 || s[0] != '"' || s[len(s)-1] != '"' {
+		return s
+	}
+	inner := s[1 : len(s)-1]
+	var b []byte
+	for i := 0; i < len(inner); i++ {
+		c := inner[i]
+		if c != '\\' {
+			b = append(b, c)
+			continue
+		}
+		i++
+		if i >= len(inner) {
+			break
+		}
+		switch e := inner[i]; e {
+		case 'a':
+			b = append(b, '\a')
+		case 'b':
+			b = append(b, '\b')
+		case 't':
+			b = append(b, '\t')
+		case 'n':
+			b = append(b, '\n')
+		case 'v':
+			b = append(b, '\v')
+		case 'f':
+			b = append(b, '\f')
+		case 'r':
+			b = append(b, '\r')
+		case '"', '\\':
+			b = append(b, e)
+		default:
+			if e >= '0' && e <= '7' { // \NNN octal, up to three digits
+				val := int(e - '0')
+				for k := 0; k < 2 && i+1 < len(inner) && inner[i+1] >= '0' && inner[i+1] <= '7'; k++ {
+					i++
+					val = val*8 + int(inner[i]-'0')
+				}
+				b = append(b, byte(val))
+			} else {
+				b = append(b, e) // unknown escape: keep the char verbatim
+			}
+		}
+	}
+	return string(b)
 }

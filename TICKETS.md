@@ -114,3 +114,14 @@ Legend: every ticket is `ready-for-agent`.
 
 - [x] Setting `CONCORD_RECORD_READS` truthy makes `post-tool-use` on `Read` also `AppendActual` the path.
 - [x] Off by default: refactor/mechanical agents record only write footprint.
+
+## T12 — Shell reconcile attributes writes by content delta (from code review)
+
+**What to build:** Close the US3 hole the code review found: the whole-tree git-status sweep reconciled files a human's editor had dirtied, letting the acting actor clobber them. Attribute the command's writes by content delta instead (ADR-0008).
+
+**Blocked by:** T05, T09.
+
+- [x] `PreToolUse` `Bash|PowerShell` snapshots the dirty files' hashes to a per-actor temp file (`hook.SnapshotName`).
+- [x] `PostToolUse` sweep reconciles only paths whose hash appeared or changed since the snapshot (`hook.ReconcileTargets`); with no snapshot it reconciles nothing.
+- [x] A file a human dirtied and the command left untouched is not reconciled — the actor's edit of it stays blocked (unit test + stress probe H + end-to-end verify).
+- [x] The actor's own shell write of a file is still reconciled — no false self-block (T05 preserved).

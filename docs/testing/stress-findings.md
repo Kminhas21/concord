@@ -5,7 +5,7 @@ It reports `FINDING` (a real weakness) or `OK` per probe and never fails the bui
 
 These are the weak points the version check + intent registry actually have, ranked.
 
-> **Status (2026-09-07):** A, B, and D are **FIXED** and their stress probes now report OK.
+> **Status (2026-09-07):** A, B, D, and H are **FIXED** and their stress probes now report OK.
 > G is an accepted design limitation (see below). F was never a problem.
 
 ## A — Concurrent `AppendActual` loses ~97% of paths (SEVERE) — ✅ FIXED
@@ -49,6 +49,24 @@ by case though the OS treats them as one file.
 - **Fix direction:** normalize path case for the key on case-insensitive platforms (lowercase
   the volume+path on Windows/macOS) while preserving the original for messages. Pair this with
   the repo-relative normalization in B.
+
+## H — Shell sweep clobbers a foreign out-of-band edit (SEVERE, correctness) — ✅ FIXED
+
+The `PostToolUse` `Bash|PowerShell` sweep reconciled **every** file `git status --porcelain`
+reported dirty. `git status` shows the whole working tree, not what the just-run command wrote,
+so a file a **human's editor** had dirtied got reconciled to the acting actor's read-hash — and
+that actor's next edit of it was then allowed, silently clobbering the human's uncommitted work.
+
+- **Impact:** defeats User Story 3 (the top-ranked failure) whenever any shell command runs
+  between the human's edit and the agent's edit — which is often. The T02 spike had wrongly
+  called this case "covered, not a gap."
+- **Cause:** the post-command git snapshot cannot attribute a write to the command; correct
+  attribution needs the tree state *before* the command.
+- **Fix (ADR-0008):** a `PreToolUse` `Bash|PowerShell` hook snapshots the dirty files' hashes;
+  the post sweep reconciles only paths whose hash appeared or changed since (`hook.ReconcileTargets`).
+  A file the command left untouched is excluded. Verified: probe H now reports OK, and an
+  end-to-end run (real binaries + git repo + live daemon) blocks the agent's edit of a
+  human-dirtied file (exit 2) while still allowing the file its own command wrote (exit 0).
 
 ## G — TTL cannot tell "thinking" from "dead" (BY DESIGN, real limitation)
 

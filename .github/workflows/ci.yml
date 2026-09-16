@@ -1,40 +1,137 @@
 name: ci
 
+# WHEN this runs.
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [main] # every push to main
+  pull_request: # every PR, against any base branch
+  workflow_dispatch: {} # a manual "Run workflow" button in the Actions tab
+
+# CONCURRENCY: if you push twice quickly to the same branch/PR, cancel the older
+# in-flight run so CI only finishes the newest commit. The group key is per-ref,
+# so different branches don't cancel each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# PERMISSIONS: least privilege. CI only needs to read the repo.
+permissions:
+  contents: read
+
+# Run every `run:` step in bash on ALL platforms. Windows runners default to
+# PowerShell, where `test -z "$(gofmt -l …)"` is invalid and a multi-line block
+# only fails on the LAST command's exit code. Git Bash (present on the Windows
+# runner) with the default `set -eo pipefail` makes every OS behave the same.
+defaults:
+  run:
+    shell: bash
+
+# One place to bump the Go version for every job.
+env:
+  GO_VERSION: "1.26.5"
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # gate — the green gate, across a matrix of operating systems.
+  #   • ubuntu-latest: the FULL suite. Tests boot a real ephemeral Dragonfly via
+  #     testcontainers on the runner's Docker. Codegen-currency and gofmt are
+  #     OS-independent, so they run only here.
+  #   • windows-latest: `go build`/`go vet` (portability) + the Docker-free
+  #     packages — the OS-sensitive path/case logic (RepoRelative, FoldCase).
+  #     The testcontainers integration tests are skipped: Dragonfly is a Linux
+  #     container and Windows runners can't run those reliably.
+  # ---------------------------------------------------------------------------
   gate:
-    runs-on: ubuntu-latest
+    name: gate (${{ matrix.os }})
+    strategy:
+      fail-fast: false # let both OSes finish; one failing must not cancel the other
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.5"
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
+      # Codegen currency + gofmt are OS-independent — run once, on Linux.
       - name: Install codegen tools
+        if: runner.os == 'Linux'
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
           go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
           go install github.com/bufbuild/buf/cmd/buf@latest
 
       - name: Verify generated code is current
+        if: runner.os == 'Linux'
         run: |
           buf generate
           git diff --exit-code
 
       - name: gofmt
+        if: runner.os == 'Linux'
         run: test -z "$(gofmt -l cmd internal test)"
 
+      # Portability: everything must compile and vet cleanly on both OSes.
       - name: Vet and build
         run: |
           go vet ./...
           go build ./...
 
-      # Tests boot a real ephemeral Dragonfly via testcontainers; the ubuntu
-      # runner provides the Docker daemon they need.
-      - name: Test
+      # Linux runs the full suite (Dragonfly via testcontainers).
+      - name: Test (full, with Dragonfly)
+        if: runner.os == 'Linux'
         run: go test ./...
+
+      # Windows runs only the Docker-free packages — the OS-sensitive path and
+      # case-folding logic. (cmd/concord's shutdown test needs no Docker either.)
+      - name: Test (Docker-free packages)
+        if: runner.os == 'Windows'
+        run: go test ./internal/hook/... ./internal/hashing/... ./cmd/concord
+
+  # ---------------------------------------------------------------------------
+  # lint — golangci-lint (config in .golangci.yml). Linux only; lint results are
+  # OS-independent.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: lint (golangci-lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false # the golangci-lint action manages its own cache
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8 # pin for reproducible CI; bump deliberately
+          # Build golangci-lint from source with the runner's Go toolchain
+          # instead of downloading the prebuilt binary. golangci-lint refuses to
+          # run when go.mod targets a newer Go than the Go it was *built* with,
+          # and the prebuilt v1.64.8 binary is built with go1.24 while this
+          # module targets 1.26.5. goinstall compiles it with 1.26.5, so the
+          # build-Go >= target-Go guard is satisfied.
+          install-mode: goinstall
+
+  # ---------------------------------------------------------------------------
+  # race — the same tests under the data-race detector. Linux only: the detector
+  # needs cgo + a C toolchain, which the ubuntu runner has (CGO on by default).
+  # This is the check that catches concurrency bugs like the AppendActual race.
+  # ---------------------------------------------------------------------------
+  race:
+    name: race (go test -race)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Test with the race detector
+        run: go test -race ./...

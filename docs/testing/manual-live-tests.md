@@ -77,9 +77,25 @@ divergence is noisy until path scales are unified.
 In a **git** scratch repo: have the agent Read `x.go`, then run `gofmt -w x.go` via **Bash**,
 then Edit `x.go`.
 
-**Expect:** the edit is allowed — the `PostToolUse` git-status sweep reconciled the agent's
-own shell write. Now repeat in a **non-git** directory: the sweep finds nothing, so the agent
-is falsely blocked and must re-read (accepted efficiency gap).
+**Expect:** the edit is allowed — the `PreToolUse` Bash snapshot + `PostToolUse` content-delta
+sweep reconciled the agent's own shell write. Now repeat in a **non-git** directory: the sweep
+finds nothing, so the agent is falsely blocked and must re-read (accepted efficiency gap).
+
+**Wiring note:** this requires the `PreToolUse` `Bash|PowerShell` snapshot hook to be wired
+(see `settings.sample.json`, ADR-0008). Without it the sweep finds no snapshot and reconciles
+nothing — the agent's own shell write then causes a false block (safe, but less convenient).
+
+## 5b. Foreign edit + agent shell command must NOT clobber (US3, ADR-0008)
+
+In a **git** scratch repo: have the agent Read `foo.go`. Then **you** edit `foo.go` in your own
+editor (leave it uncommitted). Then have the agent run any unrelated **Bash** command (e.g.
+`echo hi`) that writes a *different* file. Then ask the agent to Edit `foo.go`.
+
+**Expect:** the edit of `foo.go` is **blocked** (exit 2, "changed since you last read it") — the
+content-delta sweep saw `foo.go`'s hash unchanged by the command and did not reconcile it, so
+your uncommitted change is protected. Before ADR-0008 the whole-tree sweep reconciled `foo.go`
+and the edit was wrongly allowed. Confirm the agent's edit of the file *its own* command wrote
+is still allowed.
 
 ## 6. Fail-open (availability)
 

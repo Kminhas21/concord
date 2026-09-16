@@ -154,6 +154,7 @@ func (s *RedisStore) ListIntents(ctx context.Context) ([]IntentRecord, error) {
 	}
 
 	out := make([]IntentRecord, 0, len(ids))
+	var expired []string
 	for i, id := range ids {
 		rec := IntentRecord{ActorID: id}
 		if raw, err := gets[i].Result(); err == nil {
@@ -164,9 +165,18 @@ func (s *RedisStore) ListIntents(ctx context.Context) ([]IntentRecord, error) {
 		rec.ActorID = id
 		rec.ActualPaths = actuals[i].Val()
 		if len(rec.PredictedPaths) == 0 && len(rec.ActualPaths) == 0 && rec.IntentText == "" {
-			continue // both keys gone; stale id in the active set
+			// Both keys have expired; evict the stale id from the active set so it
+			// does not accumulate and get re-scanned on every query. Self-healing
+			// on the read path, in the spirit of the no-reaper design (ADR-0002):
+			// Redis expiry clears the records, this clears the index. A touch that
+			// races the eviction simply re-adds the id (every write SADDs it).
+			expired = append(expired, id)
+			continue
 		}
 		out = append(out, rec)
+	}
+	if len(expired) > 0 {
+		s.client.SRem(ctx, intentSetKey, expired)
 	}
 	return out, nil
 }

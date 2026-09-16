@@ -29,7 +29,7 @@ The read path for Layer 2 runs through the **orchestrator**, which queries the r
 
 > **No edit-tool call proceeds when the target file's current content hash differs from the hash the acting holder recorded at its last read of it.** Out-of-band writes — shell commands and the human's editor — are reconciled best-effort so a subsequent edit-tool call sees the true current hash; a write that no concord hook ever observes is outside the guarantee.
 
-(The reconciliation mechanism changed during implementation — see the T02 spike, `docs/spikes/filechanged.md`: `CheckEdit` compares against the live on-disk hash, and a synchronous `PostToolUse` `Bash|PowerShell` git-status sweep advances the writing actor's own read-hash. The `FileChanged` hook was rejected as async and unreliable.)
+(The reconciliation mechanism changed during implementation — see the T02 spike, `docs/spikes/filechanged.md`: `CheckEdit` compares against the live on-disk hash, and a synchronous `PostToolUse` `Bash|PowerShell` git-status sweep advances the writing actor's own read-hash. The `FileChanged` hook was rejected as async and unreliable. The sweep attributes the command's writes by **content delta** — a `PreToolUse` `Bash|PowerShell` snapshot of the dirty tree, diffed after — so it reconciles only the files the command itself changed, never a file a human's editor dirtied out of band (ADR-0008).)
 
 ### What concord permits to break, and why each is acceptable
 
@@ -37,6 +37,7 @@ The read path for Layer 2 runs through the **orchestrator**, which queries the r
 - **A missed dedup opportunity** — two agents doing overlapping work despite the registry. Acceptable **only within safe scope** (refactors and mechanical work), where the verification pass makes the omission loud. This is the precondition, not an assumption.
 - **A shell write in a non-git working directory**, where the git-status sweep finds nothing to reconcile. The guarantee is deliberately scoped so this is a known gap, not a broken promise; the human's verification pass remains the backstop.
 - **A reported overlap that isn't real** — a false positive in the advisory layer. It costs one wasted look and never denies a write.
+- **A version check skipped because the daemon is down (fail-open).** The `PreToolUse` hook exits 0 — allowing the edit — when it cannot reach the daemon or cannot hash the target, so a crashed daemon or a transient I/O error never bricks editing. "Mandatory, blocking" therefore means *enforced whenever the daemon is reachable*, not unconditionally; the protection is only as available as the daemon. This trades the guarantee for availability, deliberately, and is the one case where a stale edit can slip through without a block.
 
 ### The verification-pass precondition
 
@@ -90,7 +91,7 @@ concord's safe-scope claim depends on a condition concord does not itself provid
 
 - `RecordRead(actor_id, path, hash)` — a holder records its read-hash for a path.
 - `CheckEdit(actor_id, path, current_hash) -> {allow | block, message}` — the version check; block when `current_hash` ≠ the holder's recorded read-hash.
-- `ReconcileFileChange(actor_id, path, new_hash)` — driven by the `PostToolUse` git-status sweep; advances the writing actor's own read-hash after its out-of-band shell write. (`CheckEdit` already sees other writers' out-of-band changes because it compares against the live on-disk hash.)
+- `ReconcileFileChange(actor_id, path, new_hash)` — driven by the `PostToolUse` git-status sweep, but only for paths the command actually wrote (attributed by content delta against a `PreToolUse` snapshot, ADR-0008); advances the writing actor's own read-hash after its out-of-band shell write. (`CheckEdit` already sees other writers' out-of-band changes because it compares against the live on-disk hash.)
 - `RegisterPredicted(actor_id, intent_text, predicted_paths)` — write the predicted footprint once at subagent start.
 - `AppendActual(actor_id, path)` — append to the actual footprint; refreshes the record TTL.
 - `QueryIntent(intent_text, paths) -> {overlaps: [{actor_id, intent_text, paths}], ...}` — literal path-token intersection plus the candidate intent strings for the caller to judge; never denies.
@@ -100,7 +101,8 @@ concord's safe-scope claim depends on a condition concord does not itself provid
 **Hooks.**
 - `PreToolUse` on the edit tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) → `CheckEdit`; block with exit 2 on mismatch.
 - `PostToolUse` (or read-capturing surface) → `RecordRead` on reads and `AppendActual` on writes. Edit-tool writes are recorded by default; read recording is an opt-in per-actor mode for exploration agents only (the peak-load measurement shows even all-tool recording costs ~0.5% of wall time, so the default is a cleanliness choice, not a cost one).
-- `PostToolUse` on `Bash`/`PowerShell` → run `git status --porcelain`, then `ReconcileFileChange` per changed file, to close the Bash hole best-effort. This is synchronous (it completes before the next tool call), unlike the rejected `FileChanged` hook (see the T02 spike, `docs/spikes/filechanged.md`). In a non-git directory it finds nothing, and those shell writes stay outside the guarantee.
+- `PreToolUse` on `Bash`/`PowerShell` → snapshot the hashes of the currently-dirty files (per actor), so the post sweep can attribute the command's own writes by content delta (ADR-0008).
+- `PostToolUse` on `Bash`/`PowerShell` → run `git status --porcelain`, then `ReconcileFileChange` only for files whose hash appeared or changed since the pre snapshot, to close the Bash hole best-effort. A file a human's editor dirtied and the command left untouched is excluded, so reconciliation never advances the actor onto a change it did not make (User Story 3). With no snapshot it reconciles nothing (correctness before avoiding a false self-block). This is synchronous (it completes before the next tool call), unlike the rejected `FileChanged` hook (see the T02 spike, `docs/spikes/filechanged.md`). In a non-git directory it finds nothing, and those shell writes stay outside the guarantee.
 - The intent read path is NOT a hook: `SubagentStart` cannot inject context (ADR-0005), so the orchestrator calls `QueryIntent` itself before delegating.
 
 **Intent matching.** Path overlap is a literal set-intersection over path tokens in Dragonfly. Semantic intent overlap is judged by the querying model from the returned candidate strings — concord embeds nothing and tunes no threshold (ADR-0006).
@@ -157,6 +159,6 @@ The hook client must therefore be a **compiled binary** (not a python/node scrip
 
 **First implementation task: promote the throwaway budget parser.** The budgets above came from a throwaway parser over `~/.claude/projects/`. Its output is captured in `docs/budgets.md`; the parser itself is disposable. Re-measure if the TTL default or hot-path decision is ever revisited.
 
-**The Bash-hole mechanism was resolved by the T02 spike** (`docs/spikes/filechanged.md`): `FileChanged` was rejected (filename-scoped, unconfirmed payload, and — decisively — asynchronous, so it can race the next check). Reconciliation instead uses live-hashing at `CheckEdit` plus a synchronous `PostToolUse` git-status sweep. Shell writes in non-git directories remain outside the guarantee, which the guarantee statement already permits.
+**The Bash-hole mechanism was resolved by the T02 spike** (`docs/spikes/filechanged.md`): `FileChanged` was rejected (filename-scoped, unconfirmed payload, and — decisively — asynchronous, so it can race the next check). Reconciliation instead uses live-hashing at `CheckEdit` plus a synchronous `PostToolUse` git-status sweep. The sweep attributes the command's writes by content delta against a `PreToolUse` snapshot (ADR-0008), so a foreign out-of-band edit is never reconciled to the acting actor; a review found the original whole-tree sweep could do exactly that and defeat User Story 3. Shell writes in non-git directories remain outside the guarantee, which the guarantee statement already permits.
 
 **The name.** "Lease manager" described a rejected architecture; the service is named **concord** — coordination without locking.

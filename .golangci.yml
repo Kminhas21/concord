@@ -1,0 +1,17 @@
+# golangci-lint config (v1). Runs in CI via golangci-lint-action and locally via
+# `golangci-lint run`. Kept intentionally small: the default linters plus one.
+run:
+  timeout: 5m
+
+issues:
+  # Generated protobuf/Connect code is not ours to lint. (golangci-lint also
+  # auto-skips files with a "Code generated ... DO NOT EDIT" header, but being
+  # explicit is clearer.)
+  exclude-dirs:
+    - gen
+
+linters:
+  # Keep golangci-lint's sensible defaults (govet, errcheck, staticcheck,
+  # ineffassign, unused) and add misspell for prose in comments/strings.
+  enable:
+    - misspell
