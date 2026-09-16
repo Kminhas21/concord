@@ -83,6 +83,11 @@ Then wire the hooks: put `concord-hook` on your `PATH` and merge
 [docs/hooks/settings.sample.json](docs/hooks/settings.sample.json) into your
 Claude Code settings. The daemon stops cleanly on Ctrl+C / SIGTERM.
 
+### Releases
+
+Tagged versions publish cross-compiled binaries (linux/macOS/windows, amd64/arm64)
+to GitHub Releases via GoReleaser. To cut one: `git tag v0.1.0 && git push origin v0.1.0`.
+
 ### Configuration
 
 | Env var | Default | Meaning |
