@@ -1,0 +1,54 @@
+# GoReleaser config (v2). Cross-compiles the two concord binaries and publishes
+# a GitHub Release on a git tag. Validate locally with `goreleaser check` and a
+# dry run with `goreleaser build --snapshot --clean`.
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: concord
+    main: ./cmd/concord
+    binary: concord
+    env:
+      - CGO_ENABLED=0 # static binaries, no libc dependency
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+  - id: concord-hook
+    main: ./cmd/concord-hook
+    binary: concord-hook
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    ids: [concord, concord-hook] # both binaries go in one archive per platform
+    name_template: "concord_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  draft: false
+  prerelease: auto # a tag like v0.1.0-rc1 is marked pre-release automatically

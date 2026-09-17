@@ -236,3 +236,9 @@ Format per entry:
 **Why:** the first PR run failed only on lint: "the Go language version (go1.24) used to build golangci-lint is lower than the targeted Go version (1.26.5)". golangci-lint refuses to run when `go.mod`'s `go` directive is newer than the Go it was *built* with. The prebuilt v1.64.8 binary is built with go1.24; this module targets 1.26.5. It passed locally only because the local binary was `go install`-ed with Go 1.26.5. `goinstall` reproduces that in CI. Go 1.26 is new enough that no prebuilt golangci-lint binary is built with it yet.
 **Alternatives:** bump to a golangci-lint release built with go1.26 (none exists yet); move to golangci-lint v2 + action v7 + v2 config (larger change, deferred); lower the go.mod version (rejected — don't downgrade the project).
 **Links:** .github/workflows/ci.yml (lint job); PR #1 first run.
+
+## 2026-09-16 — CI stage 4 (CD): GoReleaser publishes binaries on tags
+**Decision:** Add `.goreleaser.yaml` + `.github/workflows/release.yml`. On a `v*` tag push, GoReleaser cross-compiles `concord` and `concord-hook` (CGO off, static) for linux/darwin/windows × amd64/arm64, archives them (tar.gz; zip on Windows) with a checksums file and a GitHub-sourced changelog, and publishes a GitHub Release. The release workflow gets `contents: write` (the CI workflow stays read-only).
+**Why:** concord ships as local binaries (one daemon per machine; k8s is out of scope, ADR-0007), so "CD" means reproducible, versioned binary releases, not a deploy. GoReleaser is the standard Go tool for this. Verified locally: `goreleaser check` passes and `goreleaser build --snapshot --clean` cross-compiled all 12 artifacts.
+**Alternatives:** hand-rolled `go build` matrix in a workflow (rejected — GoReleaser handles archives, checksums, changelog, release upload in one step); a container image (deferred — a daemon image to GHCR could come later).
+**Links:** .goreleaser.yaml; .github/workflows/release.yml.
