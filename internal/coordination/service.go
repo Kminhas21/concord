@@ -13,16 +13,55 @@ import (
 	"github.com/Kminhas21/concord/internal/store"
 )
 
+// Metrics observes coordination decisions. It is called after a verdict is
+// computed and never influences it (ADR-0001). A nil metrics dependency is
+// replaced by a no-op, so handlers call it unconditionally.
+type Metrics interface {
+	// CheckEditDecision records one CheckEdit outcome: "allowed",
+	// "blocked_stale", "blocked_no_read", or "allowed_new_file".
+	CheckEditDecision(ctx context.Context, decision string)
+	// OverlapsReported records n path overlaps surfaced by one intent query.
+	OverlapsReported(ctx context.Context, n int)
+	// DivergencesDetected records n footprint divergences surfaced by one query.
+	DivergencesDetected(ctx context.Context, n int)
+}
+
 // Service implements concordv1connect.CoordinationServiceHandler.
 type Service struct {
 	readHashes store.ReadHashStore
 	intents    store.IntentStore
+	metrics    Metrics
+}
+
+// Option configures a Service.
+type Option func(*Service)
+
+// WithMetrics wires observability onto the service. Without it, decisions are
+// recorded to a no-op and no metrics are exposed.
+func WithMetrics(m Metrics) Option {
+	return func(s *Service) {
+		if m != nil {
+			s.metrics = m
+		}
+	}
 }
 
 // NewService constructs a Service backed by the given stores.
-func NewService(readHashes store.ReadHashStore, intents store.IntentStore) *Service {
-	return &Service{readHashes: readHashes, intents: intents}
+func NewService(readHashes store.ReadHashStore, intents store.IntentStore, opts ...Option) *Service {
+	s := &Service{readHashes: readHashes, intents: intents, metrics: noopMetrics{}}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
+
+// noopMetrics is the default Metrics: it records nothing, so a Service built
+// without WithMetrics behaves exactly as before observability existed.
+type noopMetrics struct{}
+
+func (noopMetrics) CheckEditDecision(context.Context, string) {}
+func (noopMetrics) OverlapsReported(context.Context, int)     {}
+func (noopMetrics) DivergencesDetected(context.Context, int)  {}
 
 var _ concordv1connect.CoordinationServiceHandler = (*Service)(nil)
 
@@ -71,16 +110,26 @@ func (s *Service) QueryIntent(ctx context.Context, req *connect.Request[concordv
 	}
 	queryPaths := req.Msg.GetPaths()
 	resp := &concordv1.QueryIntentResponse{}
+	overlaps, divergences := 0, 0
 	for _, r := range records {
 		footprint := append(append([]string{}, r.PredictedPaths...), r.ActualPaths...)
-		resp.Matches = append(resp.Matches, &concordv1.IntentMatch{
+		match := &concordv1.IntentMatch{
 			ActorId:        r.ActorID,
 			IntentText:     r.IntentText,
 			Paths:          footprint,
 			PathOverlap:    pathsOverlap(queryPaths, footprint),
 			DivergentPaths: divergentPaths(r.PredictedPaths, r.ActualPaths),
-		})
+		}
+		if match.PathOverlap {
+			overlaps++
+		}
+		if len(match.DivergentPaths) > 0 {
+			divergences++
+		}
+		resp.Matches = append(resp.Matches, match)
 	}
+	s.metrics.OverlapsReported(ctx, overlaps)
+	s.metrics.DivergencesDetected(ctx, divergences)
 	return connect.NewResponse(resp), nil
 }
 
@@ -105,19 +154,25 @@ func (s *Service) CheckEdit(ctx context.Context, req *connect.Request[concordv1.
 	}
 
 	resp := &concordv1.CheckEditResponse{}
+	var decision string
 	switch {
 	case !found && m.GetCurrentHash() == "":
 		// No recorded read and no file on disk: this edit creates a new file.
 		resp.Allowed = true
+		decision = "allowed_new_file"
 	case !found:
 		// The file exists but the actor never read it: no basis for freshness.
 		resp.Allowed = false
 		resp.Message = fmt.Sprintf("concord: no recorded read of %s; read it before editing", m.GetPath())
+		decision = "blocked_no_read"
 	case m.GetCurrentHash() == stored:
 		resp.Allowed = true
+		decision = "allowed"
 	default:
 		resp.Allowed = false
 		resp.Message = fmt.Sprintf("concord: %s changed since you last read it; re-read and retry", m.GetPath())
+		decision = "blocked_stale"
 	}
+	s.metrics.CheckEditDecision(ctx, decision)
 	return connect.NewResponse(resp), nil
 }
