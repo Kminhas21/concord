@@ -45,6 +45,17 @@ var _ event.Sink = (*Publisher)(nil)
 // permanently-absent NATS degrades to emission-disabled rather than hanging.
 // The stream is created-or-updated idempotently, so repeated starts converge.
 func Connect(ctx context.Context, url string) (*Publisher, error) {
+	nc, js, err := connect(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	return &Publisher{nc: nc, js: js}, nil
+}
+
+// connectNATS dials NATS with concord's retry/reconnect policy so a client that
+// starts before NATS is ready still wires up once it accepts, and survives a
+// NATS restart. It is shared by the producer (Connect) and the consumer.
+func connectNATS(url string) (*nats.Conn, error) {
 	nc, err := nats.Connect(url,
 		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
@@ -53,10 +64,20 @@ func Connect(ctx context.Context, url string) (*Publisher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect nats: %w", err)
 	}
+	return nc, nil
+}
+
+// connect dials NATS and ensures the durable stream exists, returning the
+// connection and a JetStream handle. The stream-ensure is bounded by ctx.
+func connect(ctx context.Context, url string) (*nats.Conn, jetstream.JetStream, error) {
+	nc, err := connectNATS(url)
+	if err != nil {
+		return nil, nil, err
+	}
 	js, err := jetstream.New(nc)
 	if err != nil {
 		nc.Close()
-		return nil, fmt.Errorf("jetstream: %w", err)
+		return nil, nil, fmt.Errorf("jetstream: %w", err)
 	}
 	if _, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:      StreamName,
@@ -66,9 +87,9 @@ func Connect(ctx context.Context, url string) (*Publisher, error) {
 		Storage:   jetstream.FileStorage,
 	}); err != nil {
 		nc.Close()
-		return nil, fmt.Errorf("ensure stream: %w", err)
+		return nil, nil, fmt.Errorf("ensure stream: %w", err)
 	}
-	return &Publisher{nc: nc, js: js}, nil
+	return nc, js, nil
 }
 
 // Publish marshals e to JSON and publishes it to the stream subject. It returns

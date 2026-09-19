@@ -106,16 +106,24 @@ happen. Everything is wired from files in `deploy/observability/`
 (dashboards-, datasource-, and scrape-config-as-code); no manual clicking.
 
 ```bash
-# Bring the stack up (builds the concord image, starts Dragonfly + Prometheus + Grafana).
+# Bring the whole stack up (builds the image; starts Dragonfly, NATS,
+# Prometheus, Grafana, and event-web).
 make obs-up
 #   Grafana:    http://localhost:3000  (admin / admin) — "concord — coordination overview"
+#   Event feed: http://localhost:8081  — live, filterable table of coordination events
 #   Prometheus: http://localhost:9090
 #   concord:    RPC :8080, /metrics :9464
 make obs-down            # tear it down (removes volumes)
 ```
 
-The dashboard shows the block rate (allowed vs blocked edits), overlaps and
-divergences per minute, RPC latency p50/p99 per method, and a live-intents gauge.
+Two complementary views. The **Grafana dashboard** shows aggregate trends: the
+block rate (allowed vs blocked edits), overlaps and divergences per minute, RPC
+latency p50/p99 per method, and a live-intents gauge. The **event feed**
+(`event-web`) is the play-by-play — every coordination decision as it happens,
+streamed over Server-Sent Events into a color-coded table you can filter by
+actor, event type, or path. Domain events flow from the daemon to NATS JetStream
+(durable, so the feed survives an `event-web` restart) and out to the browser;
+emission is best-effort and never slows or blocks a coordination decision.
 
 `make obs-smoke` is the infra verification gate: it boots the stack, drives
 traffic, asserts metrics flow end-to-end (daemon → Prometheus → Grafana), and

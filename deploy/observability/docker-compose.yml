@@ -60,6 +60,21 @@ services:
     depends_on:
       - concord
 
+  event-web:
+    # Same image as concord; entrypoint overridden to the event-web binary.
+    build:
+      context: ../..
+      dockerfile: deploy/observability/Dockerfile
+    entrypoint: ["/event-web"]
+    environment:
+      CONCORD_NATS_URL: "nats://nats:4222"
+      EVENTWEB_ADDR: ":8081"
+      EVENTWEB_BUFFER: "200"
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      - nats
+
   grafana:
     # grafana/grafana:latest
     image: grafana/grafana@sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0
