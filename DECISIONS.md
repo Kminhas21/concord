@@ -329,3 +329,13 @@ Format per entry:
 **Testing:** hub/SSE tested without NATS through the real HTTP SSE seam (`httptest` + an SSE client): ring bound, replay-then-live, late-connect gets the buffer, reconnect resumes. One NATS-testcontainer end-to-end test (`TestEndToEndPublishReachesSSE`) proves publisher → stream → consumer → hub → SSE. `make obs-smoke` extended with an `event-web SSE end-to-end` stage: it connects to the SSE feed, drives a distinctive stale edit, and asserts the `edit_blocked` event arrives — **ran green** across the full stack.
 **Verification:** gofmt/vet/build/full suite (Dragonfly + NATS) + golangci-lint clean; `make obs-smoke` green (8/8 incl. SSE). `-race` CI-enforced.
 **Links:** docs/specs/observability.md; `.scratch/observability/issues/05-*`; DECISIONS "ticket 04"; README "Observability".
+
+## 2026-09-19 — Observability ticket 05: code-review follow-ups
+**Decision:** Applied the ticket-05 review fixes (one important, three minor; core hub/SSE/XSS verified correct):
+1. **obs-smoke waits for event-web readiness** before the SSE stage — an `event-web ready` `/healthz` poll (event-web has no compose readiness gate), so the single SSE connect can't fail spuriously against a still-starting container. Matches the driveTraffic-retry robustness pattern.
+2. **event-web shutdown is now actually graceful.** `http.Server.Shutdown` does not cancel in-flight handler contexts, so a connected SSE stream made Shutdown block its full 5s. The server now uses a cancellable `BaseContext`; shutdown cancels it, so `serveSSE`'s select unblocks immediately.
+3. **SSE heartbeat.** An idle stream now emits a `: ping` comment every 20s (ignored by `EventSource`) so an L7 proxy — the shared ALB in team mode — doesn't reap idle feeds.
+4. **Ephemeral consumer ages out.** `stream.Consume` sets `InactiveThreshold: 5m`, so repeated event-web restarts don't accumulate abandoned consumers server-side.
+**Skipped (noted):** reconnect duplicates rows (events carry no id; acceptable for a live view — a natural place for an event id later).
+**Verification:** build/vet/`internal/eventweb`+`internal/stream` tests + golangci-lint clean; `make obs-smoke` re-ran green (9/9 incl. the readiness gate). `-race` CI-enforced.
+**Links:** DECISIONS "ticket 05"; superpowers:requesting-code-review pass; `.scratch/observability/issues/05-*`.

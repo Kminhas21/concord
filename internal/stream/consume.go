@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -36,6 +37,10 @@ func Consume(ctx context.Context, url string, handle func(event.Event)) (*Consum
 	cons, err := s.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
 		AckPolicy:     jetstream.AckNonePolicy,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
+		// Ephemeral (no Durable): a restarted event-web replays from the stream,
+		// and the server ages the abandoned consumer out after inactivity so
+		// restarts don't accumulate consumers server-side.
+		InactiveThreshold: 5 * time.Minute,
 	})
 	if err != nil {
 		nc.Close()

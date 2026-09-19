@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -57,7 +58,16 @@ func main() {
 	}
 	defer func() { _ = cons.Close() }()
 
-	srv := &http.Server{Addr: addr, Handler: eventweb.Handler(hub)}
+	// BaseContext is cancelled on shutdown so in-flight SSE handlers (which block
+	// until their request context is done) unblock immediately, rather than
+	// making Shutdown wait out its whole deadline while a browser is connected.
+	baseCtx, cancelBase := context.WithCancel(context.Background())
+	defer cancelBase()
+	srv := &http.Server{
+		Addr:        addr,
+		Handler:     eventweb.Handler(hub),
+		BaseContext: func(net.Listener) context.Context { return baseCtx },
+	}
 	serveErr := make(chan error, 1)
 	go func() {
 		log.Printf("event-web on %s (nats=%s, buffer=%d)", addr, natsURL, bufSize)
@@ -72,6 +82,7 @@ func main() {
 		}
 	}
 
+	cancelBase() // release connected SSE clients before draining
 	shutdownCtx, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel2()
 	_ = srv.Shutdown(shutdownCtx)

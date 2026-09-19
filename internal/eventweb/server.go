@@ -6,9 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/Kminhas21/concord/internal/event"
 )
+
+// heartbeatInterval is how often an idle SSE stream emits a comment ping, to
+// keep intermediaries (e.g. an L7 proxy in team mode) from reaping the
+// connection. Comments (lines starting ":") are ignored by EventSource.
+const heartbeatInterval = 20 * time.Second
 
 //go:embed page.html
 var pageHTML []byte
@@ -53,15 +59,23 @@ func (h *Hub) serveSSE(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
+	ping := time.NewTicker(heartbeatInterval)
+	defer ping.Stop()
+
 	for {
 		select {
 		case <-r.Context().Done():
+			// Fires on client disconnect and on server shutdown (the daemon
+			// cancels the base context), so the handler never lingers.
 			return
 		case e, ok := <-ch:
 			if !ok {
 				return
 			}
 			writeSSE(w, e)
+			flusher.Flush()
+		case <-ping.C:
+			_, _ = io.WriteString(w, ": ping\n\n")
 			flusher.Flush()
 		}
 	}

@@ -30,12 +30,13 @@ import (
 
 // Host ports published by deploy/observability/docker-compose.yml.
 const (
-	concordRPC     = "http://localhost:8080"
-	concordMetrics = "http://localhost:9464/metrics"
-	promBase       = "http://localhost:9090"
-	grafanaBase    = "http://admin:admin@localhost:3000"
-	dashboardUID   = "concord-overview"
-	eventWebSSE    = "http://localhost:8081/events"
+	concordRPC      = "http://localhost:8080"
+	concordMetrics  = "http://localhost:9464/metrics"
+	promBase        = "http://localhost:9090"
+	grafanaBase     = "http://admin:admin@localhost:3000"
+	dashboardUID    = "concord-overview"
+	eventWebHealthz = "http://localhost:8081/healthz"
+	eventWebSSE     = "http://localhost:8081/events"
 )
 
 func main() {
@@ -133,7 +134,15 @@ func run() error {
 	}
 
 	// 5. A driven edit reaches the live event feed end-to-end:
-	//    daemon -> NATS -> event-web -> SSE.
+	//    daemon -> NATS -> event-web -> SSE. Wait for event-web to be reachable
+	//    first (it has no readiness gate in compose), so the SSE connect below
+	//    doesn't fail spuriously against a still-starting container.
+	if err := waitFor("event-web ready", 60*time.Second, func() error {
+		_, err := httpGet(eventWebHealthz)
+		return err
+	}); err != nil {
+		return err
+	}
 	fmt.Printf("  waiting: %-32s", "event-web SSE end-to-end")
 	if err := assertLiveEventFeed(client); err != nil {
 		fmt.Println("FAIL")
