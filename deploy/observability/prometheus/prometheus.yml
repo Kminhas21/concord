@@ -1,0 +1,11 @@
+# Prometheus scrape config for the local observability stack. Scrapes the
+# concord daemon's OTel-exported /metrics endpoint. Committed as code so the
+# whole stack is reproducible (dashboards-as-code, scrape-config-as-code).
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: concord
+    static_configs:
+      - targets: ["concord:9464"]

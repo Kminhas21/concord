@@ -2,7 +2,7 @@ SHELL := bash
 GOBIN := $(shell go env GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
-.PHONY: setup generate build test gate fmt
+.PHONY: setup generate build test gate fmt obs-smoke obs-up obs-down
 
 # One-time install of the protobuf/Connect codegen tools.
 setup:
@@ -27,3 +27,17 @@ gate: generate
 	go vet ./...
 	go build ./...
 	go test ./...
+
+# obs-smoke: boot the observability compose stack and assert metrics flow
+# end-to-end (daemon -> Prometheus -> Grafana), then tear it down. The infra
+# verification gate for the observability piece; needs the Docker daemon. Not on
+# the CI matrix (compose is too heavy for per-push).
+obs-smoke:
+	bash scripts/obs-smoke.sh
+
+# obs-up / obs-down: bring the stack up (Grafana on http://localhost:3000,
+# Prometheus on :9090) for hands-on exploration, and tear it back down.
+obs-up:
+	docker compose -f deploy/observability/docker-compose.yml up -d --build
+obs-down:
+	docker compose -f deploy/observability/docker-compose.yml down -v

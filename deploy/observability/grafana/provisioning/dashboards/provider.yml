@@ -1,0 +1,15 @@
+# Grafana dashboard provisioning: load every dashboard JSON under the mounted
+# dashboards directory on boot (dashboards-as-code). Edits made in the UI must be
+# exported back into the repo — the files are the source of truth.
+apiVersion: 1
+
+providers:
+  - name: concord
+    orgId: 1
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

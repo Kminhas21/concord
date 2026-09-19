@@ -1,0 +1,58 @@
+# The one local observability topology for concord (ticket 02). `docker compose
+# up` starts the daemon plus its full metrics stack, wired from the files in this
+# directory — no manual clicking to reach a working Grafana dashboard.
+#
+# The event plane (NATS + event-web) is ADDED to this same file in later tickets;
+# do not create a second compose file.
+#
+#   Grafana:    http://localhost:3000  (admin / admin)
+#   Prometheus: http://localhost:9090
+#   concord:    RPC :8080, /metrics :9464
+
+services:
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    ulimits:
+      memlock: -1
+    ports:
+      - "6379:6379"
+
+  concord:
+    build:
+      context: ../..
+      dockerfile: deploy/observability/Dockerfile
+    environment:
+      CONCORD_ADDR: ":8080"
+      CONCORD_DRAGONFLY_ADDR: "dragonfly:6379"
+      CONCORD_METRICS_ADDR: ":9464"
+      CONCORD_INTENT_TTL: "600s"
+    ports:
+      - "8080:8080"
+      - "9464:9464"
+    depends_on:
+      - dragonfly
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - concord
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
