@@ -1,0 +1,67 @@
+# The one local observability topology for concord (ticket 02). `docker compose
+# up` starts the daemon plus its full metrics stack, wired from the files in this
+# directory — no manual clicking to reach a working Grafana dashboard.
+#
+# The event plane (NATS + event-web) is ADDED to this same file in later tickets;
+# do not create a second compose file.
+#
+#   Grafana:    http://localhost:3000  (admin / admin)
+#   Prometheus: http://localhost:9090
+#   concord:    RPC :8080, /metrics :9464
+
+# Images are pinned by digest so a fresh clone reproduces the exact stack this
+# ticket was verified against (a floating :latest could pull a new Grafana major
+# that reinterprets the dashboard schema, etc.). The tag beside each digest is
+# for humans; the digest is what's pulled. Published ports bind loopback only —
+# the coordination RPC is loopback-only by design (ADR-0007) and Dragonfly is
+# unauthenticated, so neither should be exposed to the LAN.
+services:
+  dragonfly:
+    # docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    image: docker.dragonflydb.io/dragonflydb/dragonfly@sha256:18afa43e911f1dff18c7d1eb452361876d9702bb1cdff5c5d75c69617a4065c9
+    ulimits:
+      memlock: -1
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  concord:
+    build:
+      context: ../..
+      dockerfile: deploy/observability/Dockerfile
+    environment:
+      CONCORD_ADDR: ":8080"
+      CONCORD_DRAGONFLY_ADDR: "dragonfly:6379"
+      CONCORD_METRICS_ADDR: ":9464"
+      CONCORD_INTENT_TTL: "600s"
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9464:9464"
+    depends_on:
+      - dragonfly
+
+  prometheus:
+    # prom/prometheus:latest
+    image: prom/prometheus@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - concord
+
+  grafana:
+    # grafana/grafana:latest
+    image: grafana/grafana@sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus

@@ -95,7 +95,32 @@ to GitHub Releases via GoReleaser. To cut one: `git tag v0.1.0 && git push origi
 | `CONCORD_ADDR` | `127.0.0.1:8973` | Daemon listen address (loopback only). |
 | `CONCORD_DRAGONFLY_ADDR` | `127.0.0.1:6379` | Dragonfly address. |
 | `CONCORD_INTENT_TTL` | `600s` | Silence window before an untouched intent record expires. |
+| `CONCORD_METRICS_ADDR` | unset | Address to serve the Prometheus `/metrics` endpoint on (e.g. `:9464`). Empty disables telemetry entirely; coordination is unchanged. |
 | `CONCORD_RECORD_READS` | unset | Set truthy (on the hook env) to also record *read* footprint — the opt-in for exploration dedup. Off by default. |
+
+## Observability
+
+concord instruments the daemon with OpenTelemetry and ships a local stack —
+Prometheus + a provisioned Grafana dashboard — so you can *see* coordination
+happen. Everything is wired from files in `deploy/observability/`
+(dashboards-, datasource-, and scrape-config-as-code); no manual clicking.
+
+```bash
+# Bring the stack up (builds the concord image, starts Dragonfly + Prometheus + Grafana).
+make obs-up
+#   Grafana:    http://localhost:3000  (admin / admin) — "concord — coordination overview"
+#   Prometheus: http://localhost:9090
+#   concord:    RPC :8080, /metrics :9464
+make obs-down            # tear it down (removes volumes)
+```
+
+The dashboard shows the block rate (allowed vs blocked edits), overlaps and
+divergences per minute, RPC latency p50/p99 per method, and a live-intents gauge.
+
+`make obs-smoke` is the infra verification gate: it boots the stack, drives
+traffic, asserts metrics flow end-to-end (daemon → Prometheus → Grafana), and
+tears everything down. It needs the Docker daemon and is intentionally **not**
+on the CI matrix (compose is too heavy for per-push).
 
 ## Scope
 
