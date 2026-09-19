@@ -14,11 +14,12 @@
     --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); display: flex; flex-direction: column; }
   header {
     display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
     padding: 14px 20px; border-bottom: 1px solid var(--edge); background: var(--panel);
-    position: sticky; top: 0; z-index: 2;
+    flex: 0 0 auto; z-index: 2;
   }
   h1 { font-size: 15px; margin: 0; letter-spacing: .3px; font-weight: 650; }
   h1 .dim { color: var(--muted); font-weight: 400; }
@@ -40,12 +41,12 @@
   }
   button:hover { color: var(--ink); border-color: var(--accent); }
   button.on { color: var(--accent); border-color: var(--accent); }
-  .wrap { overflow-x: auto; }
+  .wrap { flex: 1 1 auto; overflow: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   thead th {
     text-align: left; padding: 9px 14px; color: var(--muted); font-weight: 600;
     font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
-    border-bottom: 1px solid var(--edge); position: sticky; top: 51px; background: var(--panel);
+    border-bottom: 1px solid var(--edge); position: sticky; top: 0; z-index: 1; background: var(--panel);
   }
   tbody td { padding: 7px 14px; border-bottom: 1px solid rgba(34,48,64,.5); vertical-align: top; }
   tbody tr:hover { background: rgba(47,212,196,.04); }

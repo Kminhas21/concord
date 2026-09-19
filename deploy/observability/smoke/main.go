@@ -30,10 +30,12 @@ import (
 
 // Host ports published by deploy/observability/docker-compose.yml.
 const (
-	concordRPC      = "http://localhost:8080"
-	concordMetrics  = "http://localhost:9464/metrics"
-	promBase        = "http://localhost:9090"
-	grafanaBase     = "http://admin:admin@localhost:3000"
+	concordRPC     = "http://localhost:8080"
+	concordMetrics = "http://localhost:9464/metrics"
+	promBase       = "http://localhost:9090"
+	// No credentials: Grafana anonymous Viewer can read the dashboard API, which
+	// avoids a first-boot 401 window that admin Basic Auth can hit.
+	grafanaBase     = "http://localhost:3000"
 	dashboardUID    = "concord-overview"
 	eventWebHealthz = "http://localhost:8081/healthz"
 	eventWebSSE     = "http://localhost:8081/events"
