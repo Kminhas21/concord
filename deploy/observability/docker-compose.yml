@@ -24,6 +24,13 @@ services:
     ports:
       - "127.0.0.1:6379:6379"
 
+  nats:
+    # nats:2.10-alpine, JetStream enabled (-js)
+    image: nats@sha256:b83efabe3e7def1e0a4a31ec6e078999bb17c80363f881df35edc70fcb6bb927
+    command: ["-js"]
+    ports:
+      - "127.0.0.1:4222:4222"
+
   concord:
     build:
       context: ../..
@@ -32,12 +39,14 @@ services:
       CONCORD_ADDR: ":8080"
       CONCORD_DRAGONFLY_ADDR: "dragonfly:6379"
       CONCORD_METRICS_ADDR: ":9464"
+      CONCORD_NATS_URL: "nats://nats:4222"
       CONCORD_INTENT_TTL: "600s"
     ports:
       - "127.0.0.1:8080:8080"
       - "127.0.0.1:9464:9464"
     depends_on:
       - dragonfly
+      - nats
 
   prometheus:
     # prom/prometheus:latest
