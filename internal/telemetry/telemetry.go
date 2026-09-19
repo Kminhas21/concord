@@ -1,8 +1,9 @@
 // Package telemetry holds concord's OpenTelemetry metrics: a Provider that
 // exposes a Prometheus /metrics endpoint, the concord-specific instruments, and
 // a Connect interceptor that times every RPC. It is the single instrumentation
-// foundation for the daemon (ADR-0009). Emission is observation only: it never
-// influences a coordination decision (ADR-0001).
+// foundation for the daemon (the observability architecture and its
+// strictly-best-effort trade are recorded in ADR-0009, with the event plane).
+// Emission is observation only: it never influences a coordination decision (ADR-0001).
 package telemetry
 
 import (
@@ -83,9 +84,13 @@ func NewMetrics(meter metric.Meter, liveIntents intentCounter) *Metrics {
 		metric.WithUnit("s"),
 		metric.WithDescription("RPC handler latency by method."))
 
-	// Emit a zero sample for the backpressure counters so the metric surface is
-	// stable before the event plane exists (they are wired in a later ticket).
+	// Emit a zero sample for the label-free counters so the metric surface is
+	// stable from the first scrape: a fresh daemon's Grafana panels read 0 rather
+	// than "no data", and the backpressure counters exist before the event plane
+	// wires their real increments (a later ticket).
 	ctx := context.Background()
+	m.overlaps.Add(ctx, 0)
+	m.divergences.Add(ctx, 0)
 	m.eventsDropped.Add(ctx, 0)
 	m.intentExpired.Add(ctx, 0)
 
@@ -93,7 +98,11 @@ func NewMetrics(meter metric.Meter, liveIntents intentCounter) *Metrics {
 		metric.WithDescription("Active intent records."))
 	if liveIntents != nil {
 		_, _ = meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-			n, err := liveIntents(ctx)
+			// Bound the store round-trip so a hung Dragonfly stalls neither the
+			// scrape nor the collector goroutine.
+			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			n, err := liveIntents(cctx)
 			if err != nil {
 				return nil // best-effort: skip this collection, never fail a scrape
 			}

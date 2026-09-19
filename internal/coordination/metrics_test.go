@@ -40,6 +40,7 @@ func metricsFixtureTTL(t *testing.T, intentTTL time.Duration) (concordv1connect.
 	t.Cleanup(func() { _ = prov.Shutdown(context.Background()) })
 
 	rs := store.NewRedisStore(dragonflyAddr, intentTTL)
+	t.Cleanup(func() { _ = rs.Close() })
 	metrics := telemetry.NewMetrics(prov.Meter(), func(ctx context.Context) (int64, error) {
 		recs, err := rs.ListIntents(ctx)
 		return int64(len(recs)), err
@@ -131,6 +132,13 @@ func TestCheckEditBlockedStaleIncrementsCounter(t *testing.T) {
 
 // flushDragonfly clears the shared keyspace so a test that asserts an exact
 // count over ListIntents is not polluted by other tests' intent records.
+//
+// WARNING: this wipes the one Dragonfly shared by the whole package (booted in
+// TestMain). It is safe ONLY because tests in this package run sequentially — no
+// test calls t.Parallel(). Do NOT add t.Parallel() to any test in this package
+// while this helper exists, or a flush can nondeterministically erase a
+// concurrent test's data. The durable fix, if parallelism is ever wanted, is to
+// isolate these tests on their own Redis DB index instead of flushing.
 func flushDragonfly(t *testing.T) {
 	t.Helper()
 	c := redis.NewClient(&redis.Options{Addr: dragonflyAddr})
@@ -203,18 +211,22 @@ func TestOverlapAndDivergenceCounters(t *testing.T) {
 
 func TestLiveIntentsGaugeReflectsActiveRecords(t *testing.T) {
 	flushDragonfly(t)
-	client, scrape := metricsFixtureTTL(t, 2*time.Second)
+	// A 5s TTL leaves generous headroom for the "rises to 2" scrape even on a
+	// loaded runner (records must not lapse before the first poll observes them),
+	// while the fall-poll below allows 9s for expiry to take effect.
+	client, scrape := metricsFixtureTTL(t, 5*time.Second)
 
 	registerPredicted(t, client, "g-a", "work a", "g/a.go")
 	registerPredicted(t, client, "g-b", "work b", "g/b.go")
 
-	if v, ok := gaugePoll(t, scrape, 2, 3*time.Second); !ok {
+	if v, ok := gaugePoll(t, scrape, 2, 4*time.Second); !ok {
 		t.Fatalf("concord_live_intents did not reach 2 (last=%v)", v)
 	}
 
 	// With no touch, both records lapse on silence and the gauge falls to 0 —
-	// no reaper, just Redis TTL + read-path self-heal (ADR-0002).
-	if v, ok := gaugePoll(t, scrape, 0, 6*time.Second); !ok {
+	// no reaper, just Redis TTL + read-path self-heal (ADR-0002). Scraping only
+	// reads, so it never refreshes the TTL and keeps a record alive.
+	if v, ok := gaugePoll(t, scrape, 0, 9*time.Second); !ok {
 		t.Fatalf("concord_live_intents did not fall to 0 after TTL (last=%v)", v)
 	}
 }

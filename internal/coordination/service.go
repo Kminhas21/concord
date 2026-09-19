@@ -120,11 +120,17 @@ func (s *Service) QueryIntent(ctx context.Context, req *connect.Request[concordv
 			PathOverlap:    pathsOverlap(queryPaths, footprint),
 			DivergentPaths: divergentPaths(r.PredictedPaths, r.ActualPaths),
 		}
+		// Count only what this query surfaces: an overlapping match, and a
+		// divergence on a record the query actually touches. Counting divergence
+		// on every active record regardless of the query would couple the metric
+		// to poll frequency, not to detection. Both counters mean "surfaced by a
+		// query"; the true arrival-rate signal is the event plane's
+		// divergence_detected / overlap_reported events (later tickets).
 		if match.PathOverlap {
 			overlaps++
-		}
-		if len(match.DivergentPaths) > 0 {
-			divergences++
+			if len(match.DivergentPaths) > 0 {
+				divergences++
+			}
 		}
 		resp.Matches = append(resp.Matches, match)
 	}
