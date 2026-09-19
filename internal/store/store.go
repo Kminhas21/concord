@@ -35,16 +35,34 @@ func readHashKey(actorID, path string) string {
 type RedisStore struct {
 	client    *redis.Client
 	intentTTL time.Duration
+	onExpire  func(actorID string)
+}
+
+// StoreOption configures a RedisStore.
+type StoreOption func(*RedisStore)
+
+// WithExpiryObserver registers a callback invoked once per intent record found
+// expired-and-evicted during a ListIntents scan. It is how intent expiry is
+// surfaced without a reaper (ADR-0002): expiry is noticed lazily on the read
+// path. The callback is best-effort and must not block; a rare concurrent
+// double-eviction may invoke it twice for one record (acceptable for an
+// advisory-layer signal — ADR-0009).
+func WithExpiryObserver(f func(actorID string)) StoreOption {
+	return func(s *RedisStore) { s.onExpire = f }
 }
 
 // NewRedisStore connects to a Dragonfly instance at addr (host:port). intentTTL
 // is the silence window after which an untouched intent record expires;
 // read-hashes are never expired.
-func NewRedisStore(addr string, intentTTL time.Duration) *RedisStore {
-	return &RedisStore{
+func NewRedisStore(addr string, intentTTL time.Duration, opts ...StoreOption) *RedisStore {
+	s := &RedisStore{
 		client:    redis.NewClient(&redis.Options{Addr: addr}),
 		intentTTL: intentTTL,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Close releases the underlying client.
@@ -177,6 +195,11 @@ func (s *RedisStore) ListIntents(ctx context.Context) ([]IntentRecord, error) {
 	}
 	if len(expired) > 0 {
 		s.client.SRem(ctx, intentSetKey, expired)
+		if s.onExpire != nil {
+			for _, id := range expired {
+				s.onExpire(id)
+			}
+		}
 	}
 	return out, nil
 }

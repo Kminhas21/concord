@@ -6,10 +6,12 @@ package coordination
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"connectrpc.com/connect"
 	concordv1 "github.com/Kminhas21/concord/gen/concord/v1"
 	"github.com/Kminhas21/concord/gen/concord/v1/concordv1connect"
+	"github.com/Kminhas21/concord/internal/event"
 	"github.com/Kminhas21/concord/internal/store"
 )
 
@@ -31,6 +33,7 @@ type Service struct {
 	readHashes store.ReadHashStore
 	intents    store.IntentStore
 	metrics    Metrics
+	emitter    event.Emitter
 }
 
 // Option configures a Service.
@@ -46,13 +49,47 @@ func WithMetrics(m Metrics) Option {
 	}
 }
 
+// WithEmitter wires domain-event emission onto the service. Without it, events
+// go to a no-op emitter — coordination is unchanged. The emitter must be
+// non-blocking (ADR-0009).
+func WithEmitter(e event.Emitter) Option {
+	return func(s *Service) {
+		if e != nil {
+			s.emitter = e
+		}
+	}
+}
+
 // NewService constructs a Service backed by the given stores.
 func NewService(readHashes store.ReadHashStore, intents store.IntentStore, opts ...Option) *Service {
-	s := &Service{readHashes: readHashes, intents: intents, metrics: noopMetrics{}}
+	s := &Service{readHashes: readHashes, intents: intents, metrics: noopMetrics{}, emitter: event.Nop{}}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
+}
+
+// emit stamps the event with the current time (if unset) and hands it to the
+// emitter. It is observation only and never blocks the caller (ADR-0009).
+func (s *Service) emit(e event.Event) {
+	if e.TS.IsZero() {
+		e.TS = time.Now().UTC()
+	}
+	s.emitter.Emit(e)
+}
+
+// millisSince returns the elapsed time since t in fractional milliseconds.
+func millisSince(t time.Time) float64 {
+	return float64(time.Since(t).Microseconds()) / 1000
+}
+
+// detailIntent carries an actor's intent text in an event's detail map, or nil
+// when there is none.
+func detailIntent(text string) map[string]string {
+	if text == "" {
+		return nil
+	}
+	return map[string]string{"intent_text": text}
 }
 
 // noopMetrics is the default Metrics: it records nothing, so a Service built
@@ -76,6 +113,7 @@ func (s *Service) RecordRead(ctx context.Context, req *connect.Request[concordv1
 	if err := s.readHashes.PutReadHash(ctx, m.GetActorId(), m.GetPath(), m.GetHash()); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	s.emit(event.Event{Type: event.TypeReadRecorded, ActorID: m.GetActorId(), Paths: []string{m.GetPath()}})
 	return connect.NewResponse(&concordv1.RecordReadResponse{}), nil
 }
 
@@ -88,6 +126,7 @@ func (s *Service) ReconcileFileChange(ctx context.Context, req *connect.Request[
 	if err := s.readHashes.PutReadHash(ctx, m.GetActorId(), m.GetPath(), m.GetNewHash()); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	s.emit(event.Event{Type: event.TypeReconciled, ActorID: m.GetActorId(), Paths: []string{m.GetPath()}})
 	return connect.NewResponse(&concordv1.ReconcileFileChangeResponse{}), nil
 }
 
@@ -97,6 +136,12 @@ func (s *Service) RegisterPredicted(ctx context.Context, req *connect.Request[co
 	if err := s.intents.PutPredicted(ctx, m.GetActorId(), m.GetIntentText(), m.GetPredictedPaths()); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	s.emit(event.Event{
+		Type:    event.TypeIntentRegistered,
+		ActorID: m.GetActorId(),
+		Paths:   m.GetPredictedPaths(),
+		Detail:  detailIntent(m.GetIntentText()),
+	})
 	return connect.NewResponse(&concordv1.RegisterPredictedResponse{}), nil
 }
 
@@ -120,16 +165,26 @@ func (s *Service) QueryIntent(ctx context.Context, req *connect.Request[concordv
 			PathOverlap:    pathsOverlap(queryPaths, footprint),
 			DivergentPaths: divergentPaths(r.PredictedPaths, r.ActualPaths),
 		}
-		// Count only what this query surfaces: an overlapping match, and a
-		// divergence on a record the query actually touches. Counting divergence
-		// on every active record regardless of the query would couple the metric
-		// to poll frequency, not to detection. Both counters mean "surfaced by a
-		// query"; the true arrival-rate signal is the event plane's
-		// divergence_detected / overlap_reported events (later tickets).
+		// Count and surface only what this query touches: an overlapping match,
+		// and a divergence on such a match. Counting divergence on every active
+		// record regardless of the query would couple the signal to poll
+		// frequency, not detection. Both the counters and the events mean
+		// "surfaced by a query".
 		if match.PathOverlap {
 			overlaps++
+			s.emit(event.Event{
+				Type:    event.TypeOverlapReported,
+				ActorID: match.ActorId,
+				Paths:   match.Paths,
+				Detail:  detailIntent(match.IntentText),
+			})
 			if len(match.DivergentPaths) > 0 {
 				divergences++
+				s.emit(event.Event{
+					Type:    event.TypeDivergenceDetected,
+					ActorID: match.ActorId,
+					Paths:   match.DivergentPaths,
+				})
 			}
 		}
 		resp.Matches = append(resp.Matches, match)
@@ -146,6 +201,7 @@ func (s *Service) AppendActual(ctx context.Context, req *connect.Request[concord
 	if err := s.intents.AppendActual(ctx, m.GetActorId(), m.GetPath()); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	s.emit(event.Event{Type: event.TypeActualAppended, ActorID: m.GetActorId(), Paths: []string{m.GetPath()}})
 	return connect.NewResponse(&concordv1.AppendActualResponse{}), nil
 }
 
@@ -153,6 +209,7 @@ func (s *Service) AppendActual(ctx context.Context, req *connect.Request[concord
 // recorded read. It never reads the file itself — the caller supplies the
 // current on-disk hash (empty when the file does not exist).
 func (s *Service) CheckEdit(ctx context.Context, req *connect.Request[concordv1.CheckEditRequest]) (*connect.Response[concordv1.CheckEditResponse], error) {
+	start := time.Now()
 	m := req.Msg
 	stored, found, err := s.readHashes.GetReadHash(ctx, m.GetActorId(), m.GetPath())
 	if err != nil {
@@ -160,7 +217,7 @@ func (s *Service) CheckEdit(ctx context.Context, req *connect.Request[concordv1.
 	}
 
 	resp := &concordv1.CheckEditResponse{}
-	var decision string
+	var decision, reason string
 	switch {
 	case !found && m.GetCurrentHash() == "":
 		// No recorded read and no file on disk: this edit creates a new file.
@@ -171,6 +228,7 @@ func (s *Service) CheckEdit(ctx context.Context, req *connect.Request[concordv1.
 		resp.Allowed = false
 		resp.Message = fmt.Sprintf("concord: no recorded read of %s; read it before editing", m.GetPath())
 		decision = "blocked_no_read"
+		reason = event.ReasonNoRead
 	case m.GetCurrentHash() == stored:
 		resp.Allowed = true
 		decision = "allowed"
@@ -178,7 +236,20 @@ func (s *Service) CheckEdit(ctx context.Context, req *connect.Request[concordv1.
 		resp.Allowed = false
 		resp.Message = fmt.Sprintf("concord: %s changed since you last read it; re-read and retry", m.GetPath())
 		decision = "blocked_stale"
+		reason = event.ReasonStale
 	}
 	s.metrics.CheckEditDecision(ctx, decision)
+
+	evType := event.TypeEditAllowed
+	if !resp.Allowed {
+		evType = event.TypeEditBlocked
+	}
+	s.emit(event.Event{
+		Type:      evType,
+		ActorID:   m.GetActorId(),
+		Paths:     []string{m.GetPath()},
+		Reason:    reason,
+		LatencyMS: millisSince(start),
+	})
 	return connect.NewResponse(resp), nil
 }

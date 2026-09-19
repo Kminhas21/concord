@@ -65,3 +65,11 @@ _Avoid_: coordinator, master
 **Verification pass**:
 The compiler-and-test run the orchestrator performs on the merged result, which makes an omitted change loud instead of silent. It is a precondition concord's safe-scope guarantee depends on, not a concord feature.
 _Avoid_: validation, CI (too general)
+
+**Domain event**:
+A structured record concord emits on each coordination decision (`edit_blocked`, `overlap_reported`, `intent_expired`, …), carrying the actor, paths, and — where relevant — a reason and the decision latency. Domain events are observation only: they feed the live event feed and metrics, and never influence a verdict (ADR-0009).
+_Avoid_: log line (too general), message (ambiguous with RPC)
+
+**Emitter**:
+The narrow seam the coordination service publishes domain events through. Every Emitter is non-blocking and best-effort: production uses an asynchronous, NATS-backed emitter that drops events (and counts the drops) under backpressure rather than ever slowing or failing a decision (ADR-0009).
+_Avoid_: publisher (reserve for the internal drain), bus
