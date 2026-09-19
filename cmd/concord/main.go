@@ -70,6 +70,11 @@ func configFromEnv() (config, error) {
 // are dropped (and counted) rather than ever blocking a coordination handler.
 const eventBufferSize = 1024
 
+// natsConnectTimeout bounds how long startup waits for NATS to become reachable
+// before degrading to emission-disabled. It covers a compose start-order race
+// without letting a permanently-absent NATS stall the daemon.
+const natsConnectTimeout = 15 * time.Second
+
 // run serves the CoordinationService on ln until ctx is cancelled, then shuts
 // down gracefully. When metricsLn is non-nil the daemon is instrumented and
 // serves Prometheus /metrics on it; when nil, observability is off and
@@ -84,6 +89,12 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 		emitter *event.AsyncEmitter
 	)
 	onExpire := func(actorID string) {
+		// Runs synchronously inside ListIntents — on the QueryIntent path and the
+		// metrics-scrape (gauge collect) path. Emit is non-blocking (ADR-0009);
+		// IntentExpired is a single counter Add. Recording from within the gauge
+		// collect callback is a rare, low-cost case (an expiry must land exactly
+		// during a scrape); if it ever shows collect-lock contention, route expiry
+		// emission off the collect path.
 		if emitter != nil {
 			emitter.Emit(event.Event{TS: time.Now().UTC(), Type: event.TypeIntentExpired, ActorID: actorID})
 		}
@@ -117,18 +128,20 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 		mmux := http.NewServeMux()
 		mmux.Handle("/metrics", prov.Handler)
 		metricsSrv = &http.Server{Handler: mmux}
-		go func() {
-			log.Printf("concord metrics on %s/metrics", metricsLn.Addr())
-			if err := metricsSrv.Serve(metricsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				log.Printf("concord: metrics server: %v", err)
-			}
-		}()
+		// The server is started below, AFTER the event wiring — a scrape runs the
+		// live-intents gauge callback, which can fire onExpire (reading emitter),
+		// so emitter must be fully assigned before any scrape goroutine exists.
 	}
 
 	if cfg.natsURL != "" {
 		// Events are strictly best-effort: a NATS failure at startup degrades to
-		// emission-disabled and the daemon coordinates normally (ADR-0009).
-		pub, err := stream.Connect(ctx, cfg.natsURL)
+		// emission-disabled and the daemon coordinates normally (ADR-0009). The
+		// connect retries so a compose start-order race (NATS not yet ready) still
+		// wires up events, but a bounded deadline stops a permanently-absent NATS
+		// from delaying startup indefinitely.
+		connectCtx, cancel := context.WithTimeout(ctx, natsConnectTimeout)
+		pub, err := stream.Connect(connectCtx, cfg.natsURL)
+		cancel()
 		if err != nil {
 			log.Printf("concord: event emission disabled (nats connect: %v)", err)
 		} else {
@@ -153,6 +166,18 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 		if publisher != nil {
 			_ = publisher.Close()
 		}
+	}
+
+	// Start the metrics server only now that emitter/metrics are assigned: a
+	// scrape can reach onExpire (which reads emitter), so all wiring must
+	// happen-before the serving goroutine that could trigger it.
+	if metricsSrv != nil {
+		go func() {
+			log.Printf("concord metrics on %s/metrics", metricsLn.Addr())
+			if err := metricsSrv.Serve(metricsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("concord: metrics server: %v", err)
+			}
+		}()
 	}
 
 	svc := coordination.NewService(rs, rs, svcOpts...)

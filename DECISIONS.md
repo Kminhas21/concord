@@ -313,3 +313,11 @@ Format per entry:
 **New dep:** `github.com/nats-io/nats.go v1.54.0` (+ jetstream subpackage). Used the current `jetstream` API (context-based, `CreateOrUpdateStream`, `js.Publish`).
 **Verification:** gofmt/vet/build/full suite (Dragonfly + NATS) + golangci-lint clean; `make obs-smoke` re-ran green with NATS in the stack and the daemon connecting to it. `-race` CI-enforced.
 **Links:** docs/specs/observability.md; ADR-0009; `.scratch/observability/issues/04-*`; DECISIONS "ticket 03".
+
+## 2026-09-18 — Observability ticket 04: code-review follow-ups
+**Decision:** Applied the ticket-04 review fixes (two important, both in daemon wiring):
+1. **Fixed a data race on `emitter`.** The metrics-server goroutine was started inside the `metricsLn` block, before `emitter` was assigned in the `natsURL` block — a `/metrics` scrape's gauge callback can reach `onExpire`, which reads `emitter`, racing the main goroutine's write. The metrics server is now started **after** all event wiring, so every write to `emitter`/`metrics` happens-before any goroutine that could read them. (Latent — no unit test sets both `metricsLn` and `natsURL`, so CI `-race` wouldn't catch it — but real UB in production/obs-smoke.)
+2. **NATS startup no longer loses events on a start-order race.** `stream.Connect` now uses `RetryOnFailedConnect(true)` + `MaxReconnects(-1)` + `ReconnectWait(2s)`, so a daemon that starts before NATS is ready still wires events once NATS accepts, and survives a NATS restart at runtime. The stream-ensure is bounded by a 15s startup context (`natsConnectTimeout`) so a permanently-absent NATS degrades to emission-disabled rather than stalling startup.
+3. **Doc note (minor):** `onExpire` documents that it runs synchronously on the QueryIntent/scrape paths and that recording the `IntentExpired` counter from within the gauge collect callback is a rare, low-cost case (route off the collect path if it ever shows contention).
+**Verification:** build/vet/`cmd/concord`+`internal/stream` tests + golangci-lint clean; `make obs-smoke` re-ran green (daemon boots and connects with the retry wiring). `-race` CI-enforced.
+**Links:** DECISIONS "ticket 04"; superpowers:requesting-code-review pass; `.scratch/observability/issues/04-*`.

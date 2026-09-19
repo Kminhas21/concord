@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -37,10 +38,18 @@ type Publisher struct {
 var _ event.Sink = (*Publisher)(nil)
 
 // Connect dials NATS at url, ensures the durable stream exists, and returns a
-// Publisher. The stream is created-or-updated idempotently, so repeated daemon
-// starts converge on the same config.
+// Publisher. It retries the initial connection and reconnects indefinitely, so a
+// daemon that starts before NATS is ready (e.g. compose start-order) still wires
+// up events once NATS accepts, and survives a NATS restart at runtime. The
+// stream-ensure is bounded by ctx: the caller passes a startup deadline so a
+// permanently-absent NATS degrades to emission-disabled rather than hanging.
+// The stream is created-or-updated idempotently, so repeated starts converge.
 func Connect(ctx context.Context, url string) (*Publisher, error) {
-	nc, err := nats.Connect(url)
+	nc, err := nats.Connect(url,
+		nats.RetryOnFailedConnect(true),
+		nats.MaxReconnects(-1),
+		nats.ReconnectWait(2*time.Second),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("connect nats: %w", err)
 	}
