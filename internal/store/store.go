@@ -44,9 +44,11 @@ type StoreOption func(*RedisStore)
 // WithExpiryObserver registers a callback invoked once per intent record found
 // expired-and-evicted during a ListIntents scan. It is how intent expiry is
 // surfaced without a reaper (ADR-0002): expiry is noticed lazily on the read
-// path. The callback is best-effort and must not block; a rare concurrent
-// double-eviction may invoke it twice for one record (acceptable for an
-// advisory-layer signal — ADR-0009).
+// path. The callback runs SYNCHRONOUSLY inside ListIntents — i.e. on the
+// QueryIntent RPC path and the metrics-scrape path — so it MUST NOT block: it
+// would otherwise put telemetry on the coordination latency path, which ADR-0009
+// forbids. A rare concurrent double-eviction may invoke it twice for one record
+// (acceptable for an advisory-layer signal — ADR-0009).
 func WithExpiryObserver(f func(actorID string)) StoreOption {
 	return func(s *RedisStore) { s.onExpire = f }
 }

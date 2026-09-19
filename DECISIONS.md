@@ -296,3 +296,11 @@ Format per entry:
 **Deferred to ticket 04:** the production NATS `Sink` and the daemon-level wiring (build the `AsyncEmitter`, wire the store expiry-observer to emit `intent_expired` + increment `concord_intent_expired_total`). This ticket delivers the seam, the events, and the best-effort machinery; ticket 04 gives them a real transport.
 **Verification:** gofmt/vet/build/full suite (real Dragonfly) + golangci-lint clean. `-race` CI-enforced (no local gcc). CONTEXT.md gains *domain event* and *Emitter*.
 **Links:** docs/specs/observability.md; ADR-0009; `.scratch/observability/issues/03-*`; DECISIONS "ticket 01".
+
+## 2026-09-18 — Observability ticket 03: code-review follow-up (AsyncEmitter Emit/Close race)
+**Decision:** Applied the ticket-03 review fix (one important item; rest doc/wording):
+1. **`AsyncEmitter.Emit` can no longer race `Close`.** Previously `Close` did `close(a.ch)` while `Emit` sent on it — dormant today (only tests Close, always after all Emits), but ticket 04 wires this into the live daemon where RPC handler goroutines and the scrape-triggered expiry observer Emit concurrently with shutdown → a send-on-closed-channel **panic** and a data race. Now a mutex guards a `closed` flag and the non-blocking send: after `Close`, a late `Emit` **drops** (calls `onDrop`) instead of panicking; `Close` is idempotent. Added `TestAsyncEmitterEmitAfterCloseDropsWithoutPanic` and `TestAsyncEmitterConcurrentEmitAndClose` (the latter is the `-race` regression guard).
+2. **Doc/wording:** the store expiry-observer comment now states it runs synchronously on the QueryIntent/scrape path and must not block; `NewAsyncEmitter` documents that `onDrop` must be concurrency-safe; `Event.Detail` documents string-valued-by-contract; ADR-0009 reworded so `overlap_reported` names the matched actor's *footprint* (not a query∩footprint intersection).
+**Skipped (nitpick):** exposing `publishTimeout` as an option — it's read in `drain`, default 5s is fine.
+**Verification:** event tests (incl. the 2 new) + full suite + gofmt/vet/golangci-lint clean; `-race` CI-enforced.
+**Links:** DECISIONS "ticket 03"; superpowers:requesting-code-review pass; `.scratch/observability/issues/03-*`.

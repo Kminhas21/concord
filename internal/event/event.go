@@ -28,7 +28,9 @@ const (
 
 // Event is the structured record emitted on a coordination decision. It is
 // designed to carry forward unchanged into team/hosted mode — do not add
-// local-only fields.
+// local-only fields. Detail values are strings by contract (e.g. intent_text,
+// matched_actor); a value that is naturally numeric or structured is stringified
+// rather than widening the map's type, to keep the wire schema stable.
 type Event struct {
 	TS        time.Time         `json:"ts"`
 	Type      string            `json:"type"`

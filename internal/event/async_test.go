@@ -126,6 +126,43 @@ func TestAsyncEmitterEmitNeverBlocks(t *testing.T) {
 	_ = em.Close()
 }
 
+func TestAsyncEmitterEmitAfterCloseDropsWithoutPanic(t *testing.T) {
+	var drops int64
+	var mu sync.Mutex
+	em := event.NewAsyncEmitter(&captureSink{}, 4, func() { mu.Lock(); drops++; mu.Unlock() })
+	if err := em.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	em.Emit(event.Event{ActorID: "late"}) // must not panic on the closed channel
+
+	mu.Lock()
+	d := drops
+	mu.Unlock()
+	if d != 1 {
+		t.Fatalf("drops after close = %d, want 1 (the late event dropped)", d)
+	}
+}
+
+// TestAsyncEmitterConcurrentEmitAndClose exercises the Emit/Close race directly.
+// Under `go test -race` this is the regression guard for the send-on-closed-
+// channel panic: many goroutines Emit while one goroutine Closes.
+func TestAsyncEmitterConcurrentEmitAndClose(t *testing.T) {
+	em := event.NewAsyncEmitter(&captureSink{}, 1, nil)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			em.Emit(event.Event{ActorID: "race"})
+		}()
+	}
+	// Close concurrently with the in-flight Emits.
+	_ = em.Close()
+	wg.Wait()
+}
+
 // blockingSink blocks in Publish until gate is closed, signalling started once
 // when it first enters Publish.
 type blockingSink struct {
