@@ -13,9 +13,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -51,8 +53,13 @@ func run() error {
 	}); err != nil {
 		return err
 	}
-	if err := driveTraffic(client); err != nil {
-		return fmt.Errorf("drive traffic: %w", err)
+	// Retry: Ping does not touch the store, and compose depends_on waits for
+	// container start, not Dragonfly readiness — so the first RecordRead can race
+	// a not-yet-accepting Dragonfly. Poll until the traffic lands.
+	if err := waitFor("drive coordination traffic", 30*time.Second, func() error {
+		return driveTraffic(client)
+	}); err != nil {
+		return err
 	}
 
 	// 1. The daemon's own /metrics surface.
@@ -152,34 +159,29 @@ func driveTraffic(c concordv1connect.CoordinationServiceClient) error {
 // promScalar runs an instant PromQL query and returns the first sample's value,
 // or "" when the result set is empty.
 func promScalar(query string) (string, error) {
-	body, err := httpGet(promBase + "/api/v1/query?query=" + urlQueryEscape(query))
+	body, err := httpGet(promBase + "/api/v1/query?query=" + url.QueryEscape(query))
 	if err != nil {
 		return "", err
 	}
-	// Avoid a JSON dependency: the value sits in ...,"value":[<ts>,"<v>"]].
-	i := strings.Index(body, `"value":[`)
-	if i < 0 {
+	var out struct {
+		Data struct {
+			// Each result's value is [<unix ts float>, "<sample value string>"].
+			Result []struct {
+				Value [2]json.RawMessage `json:"value"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		return "", fmt.Errorf("parse prometheus response: %w", err)
+	}
+	if len(out.Data.Result) == 0 {
 		return "", nil // empty result set
 	}
-	seg := body[i+len(`"value":[`):]
-	j := strings.Index(seg, "]")
-	if j < 0 {
-		return "", fmt.Errorf("malformed prometheus value in %q", body)
+	var v string
+	if err := json.Unmarshal(out.Data.Result[0].Value[1], &v); err != nil {
+		return "", fmt.Errorf("parse prometheus value: %w", err)
 	}
-	parts := strings.SplitN(seg[:j], ",", 2)
-	if len(parts) != 2 {
-		return "", fmt.Errorf("malformed prometheus value tuple in %q", body)
-	}
-	return strings.Trim(strings.TrimSpace(parts[1]), `"`), nil
-}
-
-func urlQueryEscape(s string) string {
-	// Minimal escaping sufficient for our PromQL (spaces, braces, quotes, =).
-	r := strings.NewReplacer(
-		" ", "%20", `"`, "%22", "{", "%7B", "}", "%7D",
-		"=", "%3D", "~", "%7E", "!", "%21",
-	)
-	return r.Replace(s)
+	return v, nil
 }
 
 func httpGet(url string) (string, error) {

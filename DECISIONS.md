@@ -274,3 +274,13 @@ Format per entry:
 **Why a Dockerfile here (containerize is a later piece):** the local compose stack needs a runnable daemon image; this is a minimal distroless build, not the full containerize+Helm+registry platform piece — that stays separate.
 **Not on the CI matrix:** compose (image build + Grafana/Prometheus/Dragonfly pulls) is too heavy for per-push; CI stays the Go gate, `obs-smoke` is the local infra gate. The compose file is the single local topology — the event plane (NATS + event-web) is **added to this same file** in tickets 04/05.
 **Links:** docs/specs/observability.md; `.scratch/observability/issues/02-*`; DECISIONS "ticket 01"; README "Observability".
+
+## 2026-09-18 — Observability ticket 02: code-review follow-ups
+**Decision:** Applied the ticket-02 review fixes (no critical items; "ready with fixes"):
+1. **Smoke driver retries `driveTraffic`.** `Ping` doesn't touch the store and compose `depends_on` waits for container *start*, not Dragonfly *readiness*, so the first `RecordRead` could race a not-yet-accepting Dragonfly. The traffic drive is now wrapped in the same `waitFor` poll — no spurious smoke failure.
+2. **Images pinned by digest.** `dragonfly`, `prom/prometheus`, `grafana/grafana` (compose) and the distroless runtime base (Dockerfile) are pinned to the exact digests that ran green, with the human-readable tag kept in a comment; `golang:1.26` → `golang:1.26.5` to match `go.mod` and avoid a build-time GOTOOLCHAIN download. A fresh clone now reproduces the byte-identical stack — a floating Grafana major can't silently reinterpret the dashboard schema.
+3. **Prometheus response parsed with stdlib.** Replaced the hand-rolled `promScalar` string-slicing + partial `urlQueryEscape` with `encoding/json` + `net/url.QueryEscape` (both stdlib, zero new deps) — correct by construction, no first-`value`-only misparse.
+4. **Published ports bind loopback.** `127.0.0.1:` prefix on all four services — the coordination RPC is loopback-only by design (ADR-0007) and Dragonfly is unauthenticated, so neither is exposed to the LAN.
+**Skipped (noted):** `trap EXIT`-only in `obs-smoke.sh` — bash runs the EXIT trap after a default-handled SIGINT, so teardown still fires.
+**Verification:** re-ran `make obs-smoke` green (7/7 incl. the new retry stage), pinned images; `go build`/`vet`/`gofmt`/`golangci-lint` clean.
+**Links:** DECISIONS "ticket 02"; superpowers:requesting-code-review pass; `.scratch/observability/issues/02-*`.
