@@ -68,8 +68,8 @@ services:
     entrypoint: ["/event-web"]
     environment:
       CONCORD_NATS_URL: "nats://nats:4222"
-      EVENTWEB_ADDR: ":8081"
-      EVENTWEB_BUFFER: "200"
+      CONCORD_EVENTWEB_ADDR: ":8081"
+      CONCORD_EVENTWEB_BUFFER: "200"
     ports:
       - "127.0.0.1:8081:8081"
     depends_on:

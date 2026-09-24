@@ -33,15 +33,15 @@ func main() {
 		log.Fatal("event-web: CONCORD_NATS_URL is required")
 	}
 	addr := defaultAddr
-	if v := os.Getenv("EVENTWEB_ADDR"); v != "" {
+	if v := os.Getenv("CONCORD_EVENTWEB_ADDR"); v != "" {
 		addr = v
 	}
 	bufSize := defaultBuffer
-	if v := os.Getenv("EVENTWEB_BUFFER"); v != "" {
+	if v := os.Getenv("CONCORD_EVENTWEB_BUFFER"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			bufSize = n
 		} else {
-			log.Fatalf("event-web: invalid EVENTWEB_BUFFER %q", v)
+			log.Fatalf("event-web: invalid CONCORD_EVENTWEB_BUFFER %q", v)
 		}
 	}
 

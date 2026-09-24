@@ -20,3 +20,6 @@ coverage.*
 # Scratch
 .scratch/
 /tmp/
+
+# Playwright MCP browser-test artifacts (screenshots, snapshots, logs)
+.playwright-mcp/

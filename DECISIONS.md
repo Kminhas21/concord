@@ -339,3 +339,14 @@ Format per entry:
 **Skipped (noted):** reconnect duplicates rows (events carry no id; acceptable for a live view — a natural place for an event id later).
 **Verification:** build/vet/`internal/eventweb`+`internal/stream` tests + golangci-lint clean; `make obs-smoke` re-ran green (9/9 incl. the readiness gate). `-race` CI-enforced.
 **Links:** DECISIONS "ticket 05"; superpowers:requesting-code-review pass; `.scratch/observability/issues/05-*`.
+
+## 2026-09-24 — Observability: pre-PR audit + Playwright browser testing
+**Decision:** A thorough pre-PR pass on the whole observability feature (SPEC audit subagent + Playwright browser testing of the live event dashboard). Applied fixes:
+1. **Env naming to spec convention (audit Finding 4).** `EVENTWEB_ADDR`/`EVENTWEB_BUFFER` → `CONCORD_EVENTWEB_ADDR`/`CONCORD_EVENTWEB_BUFFER`, matching the spec's `CONCORD_*` Configuration convention (cmd/event-web + compose).
+2. **Sticky header broken on scroll (found via Playwright).** The event-feed `<thead>` used `position: sticky; top:0` but the table had `border-collapse: collapse`, which silently disables sticky table headers in Chromium — the header scrolled away instead of pinning. Switched to `border-collapse: separate; border-spacing: 0` (cell borders are `border-bottom`, unaffected). Verified in-browser: after scrolling the body, `thead.top == wrap.top` (pinned).
+3. **Favicon 404 console error (found via Playwright).** Added a data-URI SVG favicon so the page issues no `/favicon.ico` request; console is now clean.
+**US17 accepted as documented** (audit Finding 1): `overlap_reported` names the matched actor + footprint only; naming the querier needs an `actor_id` on `QueryIntestRequest` with an orchestrator caller to populate it — coordination-contract scope beyond observability, recorded in ADR-0009. Not changed.
+**Browser test coverage (Playwright MCP against the live stack):** render + color-coding by event type; live SSE streaming; filters (actor, type, combined AND, clear); Pause (freezes + drops in-flight events) / Resume; sticky header on scroll; best-effort under NATS-down (coordination verdict unaffected, `concord_events_dropped_total` reached 7 once the 5s publish-timeouts fired, buffered events flushed on NATS recovery); SSE reconnect (status dot red→live, buffer replay); Clear + empty state. Two bugs found and fixed (above); all else conformed.
+**Audit result:** build/vet/gofmt/golangci-lint + full Docker-backed suite green; 26/27 user stories covered (US17 the documented partial); coordination logic byte-identical to main (observe-only, ADR-0001); no out-of-scope creep.
+**Verification:** `internal/eventweb` + `cmd/event-web` tests green; gofmt clean. Playwright artifacts gitignored.
+**Links:** docs/specs/observability.md; ADR-0009; superpowers:receiving-code-review; DECISIONS "ticket 05".
