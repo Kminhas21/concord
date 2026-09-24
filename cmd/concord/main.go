@@ -17,8 +17,10 @@ import (
 	"connectrpc.com/connect"
 	"github.com/Kminhas21/concord/gen/concord/v1/concordv1connect"
 	"github.com/Kminhas21/concord/internal/coordination"
+	"github.com/Kminhas21/concord/internal/event"
 	"github.com/Kminhas21/concord/internal/rpcaddr"
 	"github.com/Kminhas21/concord/internal/store"
+	"github.com/Kminhas21/concord/internal/stream"
 	"github.com/Kminhas21/concord/internal/telemetry"
 )
 
@@ -38,6 +40,10 @@ type config struct {
 	// disables observability entirely: the daemon coordinates as before, exposing
 	// no metrics (telemetry is strictly optional — ADR-0009).
 	metricsAddr string
+	// natsURL is the NATS JetStream URL for domain-event emission. Empty disables
+	// event emission; a connect failure at startup also degrades to disabled,
+	// never stopping the daemon (events are strictly best-effort — ADR-0009).
+	natsURL string
 }
 
 func configFromEnv() (config, error) {
@@ -56,8 +62,18 @@ func configFromEnv() (config, error) {
 		cfg.intentTTL = d
 	}
 	cfg.metricsAddr = os.Getenv("CONCORD_METRICS_ADDR")
+	cfg.natsURL = os.Getenv("CONCORD_NATS_URL")
 	return cfg, nil
 }
+
+// eventBufferSize is the depth of the async emitter's buffer: events beyond it
+// are dropped (and counted) rather than ever blocking a coordination handler.
+const eventBufferSize = 1024
+
+// natsConnectTimeout bounds how long startup waits for NATS to become reachable
+// before degrading to emission-disabled. It covers a compose start-order race
+// without letting a permanently-absent NATS stall the daemon.
+const natsConnectTimeout = 15 * time.Second
 
 // run serves the CoordinationService on ln until ctx is cancelled, then shuts
 // down gracefully. When metricsLn is non-nil the daemon is instrumented and
@@ -65,13 +81,35 @@ func configFromEnv() (config, error) {
 // coordination is byte-for-byte what it was before (ADR-0009). It returns when
 // shutdown completes or serving fails.
 func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
-	rs := store.NewRedisStore(cfg.dragonflyAddr, cfg.intentTTL)
+	// Forward-declared so the store's expiry observer can reference the metrics
+	// and emitter built after it. The observer only fires at runtime (during a
+	// ListIntents scan), by which point wiring is complete.
+	var (
+		metrics *telemetry.Metrics
+		emitter *event.AsyncEmitter
+	)
+	onExpire := func(actorID string) {
+		// Runs synchronously inside ListIntents — on the QueryIntent path and the
+		// metrics-scrape (gauge collect) path. Emit is non-blocking (ADR-0009);
+		// IntentExpired is a single counter Add. Recording from within the gauge
+		// collect callback is a rare, low-cost case (an expiry must land exactly
+		// during a scrape); if it ever shows collect-lock contention, route expiry
+		// emission off the collect path.
+		if emitter != nil {
+			emitter.Emit(event.Event{TS: time.Now().UTC(), Type: event.TypeIntentExpired, ActorID: actorID})
+		}
+		if metrics != nil {
+			metrics.IntentExpired(context.Background())
+		}
+	}
+	rs := store.NewRedisStore(cfg.dragonflyAddr, cfg.intentTTL, store.WithExpiryObserver(onExpire))
 
 	var (
 		svcOpts     []coordination.Option
 		handlerOpts []connect.HandlerOption
 		provider    *telemetry.Provider
 		metricsSrv  *http.Server
+		publisher   *stream.Publisher
 	)
 	if metricsLn != nil {
 		prov, err := telemetry.NewProvider()
@@ -80,7 +118,7 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 			return err
 		}
 		provider = prov
-		metrics := telemetry.NewMetrics(prov.Meter(), func(ctx context.Context) (int64, error) {
+		metrics = telemetry.NewMetrics(prov.Meter(), func(ctx context.Context) (int64, error) {
 			recs, err := rs.ListIntents(ctx)
 			return int64(len(recs)), err
 		})
@@ -90,6 +128,50 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 		mmux := http.NewServeMux()
 		mmux.Handle("/metrics", prov.Handler)
 		metricsSrv = &http.Server{Handler: mmux}
+		// The server is started below, AFTER the event wiring — a scrape runs the
+		// live-intents gauge callback, which can fire onExpire (reading emitter),
+		// so emitter must be fully assigned before any scrape goroutine exists.
+	}
+
+	if cfg.natsURL != "" {
+		// Events are strictly best-effort: a NATS failure at startup degrades to
+		// emission-disabled and the daemon coordinates normally (ADR-0009). The
+		// connect retries so a compose start-order race (NATS not yet ready) still
+		// wires up events, but a bounded deadline stops a permanently-absent NATS
+		// from delaying startup indefinitely.
+		connectCtx, cancel := context.WithTimeout(ctx, natsConnectTimeout)
+		pub, err := stream.Connect(connectCtx, cfg.natsURL)
+		cancel()
+		if err != nil {
+			log.Printf("concord: event emission disabled (nats connect: %v)", err)
+		} else {
+			publisher = pub
+			onDrop := func() {
+				if metrics != nil {
+					metrics.EventDropped(context.Background())
+				}
+			}
+			emitter = event.NewAsyncEmitter(pub, eventBufferSize, onDrop)
+			svcOpts = append(svcOpts, coordination.WithEmitter(emitter))
+			log.Printf("concord events -> nats %s (subject %s)", cfg.natsURL, stream.Subject)
+		}
+	}
+
+	// closeEvents flushes buffered events to NATS, then drains the connection.
+	// Order matters: the emitter drains through the publisher, so it closes first.
+	closeEvents := func() {
+		if emitter != nil {
+			_ = emitter.Close()
+		}
+		if publisher != nil {
+			_ = publisher.Close()
+		}
+	}
+
+	// Start the metrics server only now that emitter/metrics are assigned: a
+	// scrape can reach onExpire (which reads emitter), so all wiring must
+	// happen-before the serving goroutine that could trigger it.
+	if metricsSrv != nil {
 		go func() {
 			log.Printf("concord metrics on %s/metrics", metricsLn.Addr())
 			if err := metricsSrv.Serve(metricsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -114,6 +196,7 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 	case <-ctx.Done():
 	case err := <-serveErr:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			closeEvents()
 			shutdownTelemetry(metricsSrv, provider)
 			_ = rs.Close()
 			return err
@@ -124,6 +207,7 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err := srv.Shutdown(shutdownCtx)
+	closeEvents() // flush buffered events before tearing down telemetry/store
 	shutdownTelemetry(metricsSrv, provider)
 	if cerr := rs.Close(); cerr != nil {
 		log.Printf("concord: closing store: %v", cerr)

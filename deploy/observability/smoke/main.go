@@ -12,6 +12,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,8 +33,12 @@ const (
 	concordRPC     = "http://localhost:8080"
 	concordMetrics = "http://localhost:9464/metrics"
 	promBase       = "http://localhost:9090"
-	grafanaBase    = "http://admin:admin@localhost:3000"
-	dashboardUID   = "concord-overview"
+	// No credentials: Grafana anonymous Viewer can read the dashboard API, which
+	// avoids a first-boot 401 window that admin Basic Auth can hit.
+	grafanaBase     = "http://localhost:3000"
+	dashboardUID    = "concord-overview"
+	eventWebHealthz = "http://localhost:8081/healthz"
+	eventWebSSE     = "http://localhost:8081/events"
 )
 
 func main() {
@@ -129,7 +134,71 @@ func run() error {
 	}); err != nil {
 		return err
 	}
+
+	// 5. A driven edit reaches the live event feed end-to-end:
+	//    daemon -> NATS -> event-web -> SSE. Wait for event-web to be reachable
+	//    first (it has no readiness gate in compose), so the SSE connect below
+	//    doesn't fail spuriously against a still-starting container.
+	if err := waitFor("event-web ready", 60*time.Second, func() error {
+		_, err := httpGet(eventWebHealthz)
+		return err
+	}); err != nil {
+		return err
+	}
+	fmt.Printf("  waiting: %-32s", "event-web SSE end-to-end")
+	if err := assertLiveEventFeed(client); err != nil {
+		fmt.Println("FAIL")
+		return err
+	}
+	fmt.Println("ok")
 	return nil
+}
+
+// assertLiveEventFeed connects to event-web's SSE stream, drives a distinctive
+// stale edit, and confirms the resulting edit_blocked event arrives on the feed.
+func assertLiveEventFeed(client concordv1connect.CoordinationServiceClient) error {
+	const actor, path = "smoke-sse", "sse/probe.go"
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, eventWebSSE, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("connect event-web SSE: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("event-web SSE returned %d", resp.StatusCode)
+	}
+
+	// Drive the distinctive event once connected; it arrives live (or, if it
+	// races ahead, in the buffered replay the stream sends on connect).
+	go func() {
+		_, _ = client.RecordRead(ctx, connect.NewRequest(&concordv1.RecordReadRequest{ActorId: actor, Path: path, Hash: "v1"}))
+		_, _ = client.CheckEdit(ctx, connect.NewRequest(&concordv1.CheckEditRequest{ActorId: actor, Path: path, CurrentHash: "v2"}))
+	}()
+
+	sc := bufio.NewScanner(resp.Body)
+	for sc.Scan() {
+		data, ok := strings.CutPrefix(sc.Text(), "data: ")
+		if !ok {
+			continue
+		}
+		var e struct {
+			Type    string `json:"type"`
+			ActorID string `json:"actor_id"`
+		}
+		if err := json.Unmarshal([]byte(data), &e); err != nil {
+			continue
+		}
+		if e.Type == "edit_blocked" && e.ActorID == actor {
+			return nil
+		}
+	}
+	return fmt.Errorf("edit_blocked for %q never arrived on the event-web SSE feed", actor)
 }
 
 // driveTraffic makes the daemon record a stale block and an overlap so the

@@ -1,0 +1,15 @@
+# Observability is strictly best-effort, never on the correctness or latency path
+
+concord emits a structured domain event on every coordination decision (for the live event feed and the metrics), and exports metrics over OpenTelemetry. Emission and metric recording are **observation only**: they run after a verdict is computed and can never slow, block, or change it. A coordination handler hands its event to a bounded in-memory buffer and returns immediately; a background publisher drains that buffer to the event transport (NATS JetStream). If the buffer is full or the transport is unavailable, the event is **dropped** and a `concord_events_dropped_total` counter is incremented — the handler never waits on, and never fails because of, telemetry. Telemetry configuration is optional: with it unset, the daemon coordinates exactly as before, emitting nothing.
+
+This is the deliberate trade: we lose some events under backpressure or a transport outage, and we keep the version check's latency budget and correctness guarantee intact no matter what the observability stack is doing. Losing an event costs visibility, never a wrong allow/block verdict. The dropped-event counter makes the loss itself observable.
+
+The choice follows directly from the non-negotiables: the version check holds nothing on a timer and depends on nothing it cannot observe (ADR-0002), and the daemon's latency budget is set by the compiled hook client's one localhost RPC (ADR-0007). A telemetry backend on the hot path would violate both. The two coordination layers stay separate (ADR-0001); observability is a third, cross-cutting concern layered onto both — it reads their decisions and never lets one act on behalf of the other.
+
+## Consequences
+
+- The `Emitter` seam (`internal/event`) is the single new boundary the coordination service depends on for events; production supplies an async, NATS-backed emitter, tests supply a fake. The metrics increments sit alongside the emit call, through the OTel meter (ADR-0009 covers both planes).
+- Event delivery is at-most-once from the daemon's side under stress: a full buffer or a down transport drops events by design. Durability/replay for late-connecting viewers is provided downstream by the JetStream stream, not by the daemon retrying.
+- Best-effort is a tested invariant, not a hope: a normal-gate test drives a decision through an erroring/blocking emitter and asserts the allow/block verdict is unchanged and `concord_events_dropped_total` moved.
+- `intent_expired` has no reaper to fire it (ADR-0002): expiry is surfaced lazily when a query's `ListIntents` evicts an id whose keys have expired. It is therefore observed only when someone reads, and a rare concurrent double-eviction may over-count — acceptable for an advisory-layer signal that never affects correctness.
+- `overlap_reported` names the matched actor and that actor's footprint (its predicted+actual paths), not the precise query∩footprint intersection; the query carries no actor id, so the querier is anonymous in the event (a deliberate limitation of the current `QueryIntent` contract, not a lost field).
