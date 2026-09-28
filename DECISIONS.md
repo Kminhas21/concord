@@ -352,9 +352,23 @@ Format per entry:
 **Links:** docs/specs/observability.md; ADR-0009; superpowers:receiving-code-review; DECISIONS "ticket 05".
 
 ## 2026-09-27 — Containerize+Helm ticket 01: canonical image + ADR-0010 + PR build
-**Decision:** Promoted the container build to a canonical `deploy/docker/Dockerfile` — one multi-stage, static (`CGO_ENABLED=0`), distroless `nonroot` image carrying both binaries (`/concord` default entrypoint, `/event-web` override), digest-pinned bases. It is now the single image referenced by both the observability compose stack (repointed) and the future Helm chart. `make image` builds the local tag `ghcr.io/kminhas21/concord:dev` (used by compose and, later, `kind load` — never pulled locally). A new CI `image` job builds the image on every PR with buildx **without pushing** (GHA cache), catching build breaks before merge; multi-arch GHCR publish stays tag-triggered (ticket 02).
+**Decision:** Promoted the container build to a canonical `deploy/docker/Dockerfile` — one multi-stage, static (`CGO_ENABLED=0`), distroless `nonroot` image carrying both binaries (`/concord` default entrypoint, `/event-web` override), digest-pinned bases. It is now the single image referenced by both the observability compose stack (repointed) and the future Helm chart. `make image` builds the local tag `ghcr.io/kminhas21/concord:dev` (used by compose and, later, `kind load` — never pulled locally). A new CI `image` job builds the image on every PR with buildx **without pushing** (GHA cache), surfacing build breaks on the PR; multi-arch GHCR publish stays tag-triggered (ticket 02). **To make it actually block merge**, add the `image (build)` context to `main`'s branch-protection required checks (a repo setting, not a workflow change) — see the code-review follow-up entry below.
 **ADR-0010** records the ADR-0007 reversal, scoped to **topology only**: solo/local mode unchanged (loopback, one daemon per machine); hosted mode binds `0.0.0.0` behind a cluster-internal Service, one coordination unit (one concord Deployment + one Dragonfly) per team, all correctness properties (ADR-0001/0002/0004, fail-open) identical; no cross-machine coordination. `CLAUDE.md`'s "one long-lived local daemon" line is qualified to point at ADR-0010.
 **Also:** added `docs/PLATFORM-ROADMAP.md` — the living map of the 7 flagship pieces (status, remaining-scope seeds, grounded-testing tools per piece) and the repeatable grill → to-spec → to-tickets → implement workflow, so future sessions can continue the sprint.
 **Verification:** `make image` builds (34MB distroless); `/concord` starts and listens on `[::]:8080` (networked); `/event-web` runs (exits on the required-config check); `docker compose config` valid and `make obs-smoke` green (9/9) with the repointed Dockerfile; `go build ./...` clean (no Go change).
 **Alternatives:** separate concord/event-web images (rejected — one multi-binary image is simpler to publish/pin, two entrypoints suffice); keep the Dockerfile under `deploy/observability/` (rejected — it is now a first-class artifact the chart also consumes).
 **Links:** docs/specs/containerize-helm.md; ADR-0010; `.scratch/containerize-helm/issues/01-*`; docs/PLATFORM-ROADMAP.md.
+
+## 2026-09-27 — Containerize+Helm ticket 01: code-review follow-up
+**Decision:** From the `superpowers:requesting-code-review` pass (one should-fix; no correctness bug). The reviewer verified the Dockerfile builds, `.dockerignore` includes every build input, the CI job correctly has no `packages: write`, and ADR-0010's "N stateless concord replicas share one Dragonfly is safe" claim holds against `internal/store` (atomic SET/GET/SADD; cross-replica actor sequences stay correct).
+1. **Make the `image (build)` job a merge gate (pending user action).** The job runs on PRs and goes red on a build break, but it is not in `main`'s branch-protection required checks, so a break does not block merge — the ticket's "caught before merge" intent is not enforced. Adding a required status check is a repo-settings change that the Claude Code permission layer holds for the user; the branch-protection PATCH must be run by the user:
+   ```
+   gh api -X PATCH repos/Kminhas21/concord/branches/main/protection/required_status_checks \
+     -f strict=true \
+     -f 'contexts[]=gate (ubuntu-latest)' -f 'contexts[]=gate (windows-latest)' \
+     -f 'contexts[]=lint (golangci-lint)' -f 'contexts[]=race (go test -race)' \
+     -f 'contexts[]=image (build)'
+   ```
+   (Run it once PR-1 is open so the check reports; the five contexts replace the current four.)
+**Accepted as-is (nitpicks):** the builder base is version-pinned (`golang:1.26.5`) not digest-pinned — consistent with the accepted observability-piece decision; `push:false` without `load:true` is correct for pure build-validation.
+**Links:** DECISIONS "ticket 01"; `.scratch/containerize-helm/issues/01-*`.
