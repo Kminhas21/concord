@@ -26,7 +26,7 @@ No edit-tool call proceeds when the target file's current content hash differs f
 ## Building it
 
 - **Language:** Go. **Store:** Dragonfly (for access shape, not scale — say so).
-- **Shape:** one long-lived local daemon; each hook spawns a thin **compiled** client making one localhost RPC (ADR-0007). The compiled client matters — python/node startup blows the latency budget (`docs/budgets.md`).
+- **Shape:** one long-lived local daemon; each hook spawns a thin **compiled** client making one localhost RPC (ADR-0007). The compiled client matters — python/node startup blows the latency budget (`docs/budgets.md`). *Hosted mode* (the platform flagship) runs concord as a networked container behind a cluster-internal Service — a **topology-only** reversal of ADR-0007 that preserves every correctness property; solo/local mode is unchanged (ADR-0010).
 - **One test seam:** the RPC surface. Drive all tests through it against an ephemeral Dragonfly. Never test internal key layout. Work **test-first (TDD)**.
 - **Bash-hole mechanism (resolved, T02 spike):** `FileChanged` was rejected (async, can race the next check). Reconciliation uses live-hashing at `CheckEdit` + a synchronous `PostToolUse` git-status sweep. Shell writes in non-git dirs stay outside the guarantee.
 

@@ -1,7 +1,9 @@
-# Minimal image for the concord daemon, used by the local observability compose
-# stack. Multi-stage: build a static binary, ship it on distroless. (The full
-# containerize+Helm+registry story is a later platform piece; this is just
-# enough to run the daemon under docker compose.)
+# Canonical concord image. One multi-stage, static, distroless build carrying
+# both binaries — /concord (default entrypoint) and /event-web (override). It is
+# the single image referenced by the Helm chart (deploy/helm/concord) and the
+# observability compose stack, built locally by `make image` and published
+# multi-arch to GHCR by GoReleaser on a version tag.
+#
 # golang:1.26.5 matches go.mod's `go 1.26.5`, so the build needs no GOTOOLCHAIN
 # download and stays hermetic.
 FROM golang:1.26.5 AS build
@@ -17,6 +19,6 @@ FROM gcr.io/distroless/static-debian12@sha256:afa5c872c891853ca7fcf1f12c3edb23f7
 COPY --from=build /out/concord /concord
 COPY --from=build /out/event-web /event-web
 # concord: coordination RPC + Prometheus /metrics; event-web: the live SSE feed.
-# The default entrypoint is the daemon; the event-web service overrides it.
+# The default entrypoint is the daemon; the event-web service/chart overrides it.
 EXPOSE 8080 9464 8081
 ENTRYPOINT ["/concord"]
