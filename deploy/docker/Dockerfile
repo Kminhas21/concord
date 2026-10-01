@@ -2,7 +2,8 @@
 # both binaries — /concord (default entrypoint) and /event-web (override). It is
 # the single image referenced by the Helm chart (deploy/helm/concord) and the
 # observability compose stack, built locally by `make image` and published
-# multi-arch to GHCR by GoReleaser on a version tag.
+# multi-arch to GHCR by the release workflow (buildx) on a version tag.
+# (GoReleaser handles the binaries + GitHub Release, not the image — see DECISIONS.)
 #
 # golang:1.26.5 matches go.mod's `go 1.26.5`, so the build needs no GOTOOLCHAIN
 # download and stays hermetic.
