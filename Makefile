@@ -2,7 +2,7 @@ SHELL := bash
 GOBIN := $(shell go env GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
-.PHONY: setup generate build test gate fmt obs-smoke obs-up obs-down image chart-lint
+.PHONY: setup generate build test gate fmt obs-smoke obs-up obs-down image chart-lint chart-test
 
 # CHART is the concord coordination-unit Helm chart.
 CHART ?= deploy/helm/concord
@@ -52,6 +52,14 @@ chart-lint:
 	helm lint $(CHART)
 	set -o pipefail; helm template $(CHART) | kubeconform -strict -summary
 	helm unittest $(CHART)
+
+# chart-test: the end-to-end acceptance gate — boot a kind cluster, load the
+# local image, install the chart, and drive a real stale CheckEdit that BLOCKS
+# (and a matching one that ALLOWS) against the in-cluster concord+Dragonfly, then
+# tear down. Needs docker + kind + helm + kubectl. The kind analog of obs-smoke;
+# local/opt-in, not on the CI matrix.
+chart-test:
+	bash scripts/chart-test.sh
 
 # obs-smoke: boot the observability compose stack and assert metrics flow
 # end-to-end (daemon -> Prometheus -> Grafana), then tear it down. The infra

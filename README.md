@@ -130,6 +130,38 @@ traffic, asserts metrics flow end-to-end (daemon → Prometheus → Grafana), an
 tears everything down. It needs the Docker daemon and is intentionally **not**
 on the CI matrix (compose is too heavy for per-push).
 
+## Kubernetes (Helm chart)
+
+concord also ships as a container image and a Helm chart, so one coordination
+unit (a stateless concord Deployment + its own Dragonfly data store) runs on any
+Kubernetes cluster. This is the building block the hosted/team-mode operator
+templates per team; solo/local mode is unchanged (ADR-0010).
+
+```bash
+# Prereqs: docker, kind, helm, kubeconform, kubectl.
+
+make image         # build the canonical image (ghcr.io/kminhas21/concord:dev)
+make chart-lint    # fast, no cluster: helm lint + kubeconform (schema) + helm unittest
+make chart-test    # end-to-end on a real kind cluster (see below)
+```
+
+`make chart-lint` validates the chart without a cluster: `helm lint`,
+`kubeconform` (every rendered manifest against the real Kubernetes API schema),
+and `helm-unittest` (template-logic tests). It runs in CI. The one-time
+helm-unittest plugin install:
+
+```bash
+helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
+```
+(`--verify=false` is only needed on Helm 4.)
+
+`make chart-test` is the end-to-end acceptance gate (the kind analog of
+`obs-smoke`): it boots a `kind` cluster, `kind load`s the local image (offline,
+no registry), `helm install`s the chart, waits for the concord + Dragonfly
+rollout, and drives a real stale `CheckEdit` that **blocks** (and a matching one
+that **allows**) through the RPC seam against the in-cluster unit — then tears the
+cluster down. Local/opt-in, not on the CI matrix.
+
 ## Scope
 
 concord owns only in-flight coordination state. Out of scope by design: leases,

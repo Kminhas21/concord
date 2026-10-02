@@ -408,3 +408,13 @@ Format per entry:
 **Why assert rendered output, not mechanics:** these are the chart's unit tests; the kind e2e (ticket 05) is the integration layer. A refactor that preserves rendered manifests must keep these green.
 **Verification:** `helm unittest` 20/20 across 3 suites; `make chart-lint` green (lint + kubeconform 4/4 + unittest); `ci.yml` parses with the `chart` job.
 **Links:** docs/specs/containerize-helm.md; `.scratch/containerize-helm/issues/04-*`; DECISIONS "ticket 03".
+
+## 2026-10-02 — Containerize+Helm ticket 05: kind end-to-end chart-test (closes the piece)
+**Decision:** `make chart-test` (`scripts/chart-test.sh`) is the end-to-end acceptance gate — the kind analog of `make obs-smoke`. It boots a real `kind` cluster, builds + `kind load`s the local `:dev` image (offline, no registry), `helm install`s the chart (`--set image.tag=dev`, `--wait`), waits for the concord Deployment + Dragonfly StatefulSet rollout, port-forwards the concord Service, and drives the version-check guarantee through the **existing Connect RPC seam**: a stale `CheckEdit` must BLOCK and a matching one must ALLOW. The drive is retried (obs-smoke pattern) to absorb port-forward/store readiness; the cluster is always deleted on exit (trap). Local/opt-in, not on the CI matrix (a cluster is too heavy per-push).
+**The three ticket-03 runtime risks all cleared by observation on kind — no changes needed:**
+- **Dragonfly reached Ready** (1/1) on a default kind node with no memory/memlock tuning — the `ulimits: memlock: -1` the compose used turned out not to be required in a Pod; the readiness probe passes.
+- **concord runs under `readOnlyRootFilesystem: true`** (1/1 Ready) — it needed no writable `/tmp`, confirming the daemon writes nothing to disk.
+- **The retry-the-drive** guard is implemented in the script; combined with `--wait` + rollout-status, the stale-block/allow assertion is stable.
+**Proof:** stale `CheckEdit` → `concord: x.go changed since you last read it; re-read and retry`; matching `CheckEdit` → `{"allowed":true}` — concord (Pod) → Dragonfly (StatefulSet, via headless-Service DNS) → the guarantee holds. `make chart-test` ran green end-to-end; no leaked clusters after teardown.
+**Docs:** README gains a "Kubernetes (Helm chart)" section (prereqs, `make image`/`chart-lint`/`chart-test`, the one-time helm-unittest plugin install). This **completes the containerize+Helm piece** (platform #2): the image + chart are the artifacts every later platform piece (operator, EKS, GitOps) builds on.
+**Links:** docs/specs/containerize-helm.md; `.scratch/containerize-helm/issues/05-*`; DECISIONS "ticket 03/04"; ADR-0010.
