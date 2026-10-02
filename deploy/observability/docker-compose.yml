@@ -34,7 +34,7 @@ services:
   concord:
     build:
       context: ../..
-      dockerfile: deploy/observability/Dockerfile
+      dockerfile: deploy/docker/Dockerfile
     environment:
       CONCORD_ADDR: ":8080"
       CONCORD_DRAGONFLY_ADDR: "dragonfly:6379"
@@ -64,7 +64,7 @@ services:
     # Same image as concord; entrypoint overridden to the event-web binary.
     build:
       context: ../..
-      dockerfile: deploy/observability/Dockerfile
+      dockerfile: deploy/docker/Dockerfile
     entrypoint: ["/event-web"]
     environment:
       CONCORD_NATS_URL: "nats://nats:4222"

@@ -2,7 +2,12 @@ SHELL := bash
 GOBIN := $(shell go env GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
-.PHONY: setup generate build test gate fmt obs-smoke obs-up obs-down
+.PHONY: setup generate build test gate fmt obs-smoke obs-up obs-down image
+
+# IMAGE is the canonical concord image tag. The local/dev tag is used by the
+# observability stack and the kind chart test (loaded via `kind load`, never
+# pulled); GoReleaser publishes the real multi-arch image to GHCR on a tag.
+IMAGE ?= ghcr.io/kminhas21/concord:dev
 
 # One-time install of the protobuf/Connect codegen tools.
 setup:
@@ -27,6 +32,10 @@ gate: generate
 	go vet ./...
 	go build ./...
 	go test ./...
+
+# image: build the canonical concord image (both binaries) as the local dev tag.
+image:
+	docker build -f deploy/docker/Dockerfile -t $(IMAGE) .
 
 # obs-smoke: boot the observability compose stack and assert metrics flow
 # end-to-end (daemon -> Prometheus -> Grafana), then tear it down. The infra
