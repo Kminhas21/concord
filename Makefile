@@ -50,7 +50,7 @@ image:
 # (--verify=false is needed on Helm 4; drop it on Helm 3.)
 chart-lint:
 	helm lint $(CHART)
-	helm template $(CHART) | kubeconform -strict -summary
+	set -o pipefail; helm template $(CHART) | kubeconform -strict -summary
 	helm unittest $(CHART)
 
 # obs-smoke: boot the observability compose stack and assert metrics flow
