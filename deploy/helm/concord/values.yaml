@@ -3,7 +3,9 @@
 
 image:
   repository: ghcr.io/kminhas21/concord
-  # tag defaults to .Chart.AppVersion when empty.
+  # tag defaults to .Chart.AppVersion when empty. NOTE: no image is published to
+  # GHCR until a v* release tag, so a plain `helm install` would ImagePullBackOff
+  # until then; the kind e2e loads a local image (`kind load` + --set image.tag=dev).
   tag: ""
   # IfNotPresent lets a locally-loaded image (kind load) be used without pulling.
   pullPolicy: IfNotPresent
