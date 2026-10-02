@@ -1,0 +1,56 @@
+suite: services
+tests:
+  - it: concord Service is a ClusterIP exposing rpc and (default) metrics, selecting coordination Pods
+    template: templates/concord-service.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - contains:
+          path: spec.ports
+          content:
+            name: rpc
+            port: 8080
+            targetPort: rpc
+      - contains:
+          path: spec.ports
+          content:
+            name: metrics
+            port: 9464
+            targetPort: metrics
+      - isSubset:
+          path: spec.selector
+          content:
+            app.kubernetes.io/component: coordination
+
+  - it: concord Service drops the metrics port when metrics are disabled
+    template: templates/concord-service.yaml
+    set:
+      concord.metrics.enabled: false
+    asserts:
+      - notContains:
+          path: spec.ports
+          any: true
+          content:
+            name: metrics
+
+  - it: dragonfly Service is headless (clusterIP None) selecting datastore Pods
+    template: templates/dragonfly-service.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.clusterIP
+          value: None
+      - contains:
+          path: spec.ports
+          content:
+            name: redis
+            port: 6379
+            targetPort: redis
+      - isSubset:
+          path: spec.selector
+          content:
+            app.kubernetes.io/component: datastore

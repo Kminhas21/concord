@@ -1,0 +1,57 @@
+suite: dragonfly statefulset
+templates:
+  - templates/dragonfly-statefulset.yaml
+tests:
+  - it: is a single-replica StatefulSet bound to its headless Service
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.serviceName
+          value: RELEASE-NAME-concord-dragonfly
+
+  - it: is ephemeral by default (emptyDir, no PVC)
+    asserts:
+      - exists:
+          path: spec.template.spec.volumes[0].emptyDir
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: data
+      - notExists:
+          path: spec.volumeClaimTemplates
+
+  - it: persistence enabled renders a volumeClaimTemplate and no emptyDir
+    set:
+      dragonfly.persistence.enabled: true
+      dragonfly.persistence.size: 2Gi
+    asserts:
+      - exists:
+          path: spec.volumeClaimTemplates
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 2Gi
+      - notExists:
+          path: spec.template.spec.volumes
+
+  - it: has TCP probes on the redis port
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.tcpSocket.port
+          value: redis
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.tcpSocket.port
+          value: redis
+
+  - it: carries the datastore component label and selector
+    asserts:
+      - isSubset:
+          path: metadata.labels
+          content:
+            app.kubernetes.io/component: datastore
+      - isSubset:
+          path: spec.selector.matchLabels
+          content:
+            app.kubernetes.io/component: datastore

@@ -40,12 +40,18 @@ gate: generate
 image:
 	docker build -f deploy/docker/Dockerfile -t $(IMAGE) .
 
-# chart-lint: fast chart checks with no cluster — structural lint plus
-# kubeconform schema-validation of every rendered manifest against the real
-# Kubernetes API. The kind end-to-end test (make chart-test) comes in ticket 05.
+# chart-lint: fast chart checks with no cluster — structural lint, kubeconform
+# schema-validation of every rendered manifest against the real Kubernetes API,
+# and helm-unittest template-logic tests. The kind end-to-end test
+# (make chart-test) comes in ticket 05.
+#
+# helm-unittest is a one-time plugin install:
+#   helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
+# (--verify=false is needed on Helm 4; drop it on Helm 3.)
 chart-lint:
 	helm lint $(CHART)
 	helm template $(CHART) | kubeconform -strict -summary
+	helm unittest $(CHART)
 
 # obs-smoke: boot the observability compose stack and assert metrics flow
 # end-to-end (daemon -> Prometheus -> Grafana), then tear it down. The infra
