@@ -2,7 +2,10 @@ SHELL := bash
 GOBIN := $(shell go env GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
-.PHONY: setup generate build test gate fmt obs-smoke obs-up obs-down image
+.PHONY: setup generate build test gate fmt obs-smoke obs-up obs-down image chart-lint
+
+# CHART is the concord coordination-unit Helm chart.
+CHART ?= deploy/helm/concord
 
 # IMAGE is the canonical concord image tag. The local/dev tag is used by the
 # observability stack and the kind chart test (loaded via `kind load`, never
@@ -36,6 +39,13 @@ gate: generate
 # image: build the canonical concord image (both binaries) as the local dev tag.
 image:
 	docker build -f deploy/docker/Dockerfile -t $(IMAGE) .
+
+# chart-lint: fast chart checks with no cluster — structural lint plus
+# kubeconform schema-validation of every rendered manifest against the real
+# Kubernetes API. The kind end-to-end test (make chart-test) comes in ticket 05.
+chart-lint:
+	helm lint $(CHART)
+	helm template $(CHART) | kubeconform -strict -summary
 
 # obs-smoke: boot the observability compose stack and assert metrics flow
 # end-to-end (daemon -> Prometheus -> Grafana), then tear it down. The infra

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "concord.fullname" . }}
+  labels:
+    {{- include "concord.labels" . | nindent 4 }}
+    app.kubernetes.io/component: coordination
+spec:
+  replicas: {{ .Values.concord.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "concord.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: coordination
+  template:
+    metadata:
+      labels:
+        {{- include "concord.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: coordination
+    spec:
+      # Pod-level: distroless:nonroot runs as uid 65532; make that a requirement.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: concord
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: CONCORD_ADDR
+              value: ":{{ .Values.concord.rpcPort }}" # bind all interfaces (hosted mode, ADR-0010)
+            - name: CONCORD_DRAGONFLY_ADDR
+              value: "{{ include "concord.dragonflyName" . }}:{{ .Values.dragonfly.port }}"
+            - name: CONCORD_INTENT_TTL
+              value: {{ .Values.concord.intentTTL | quote }}
+            {{- if .Values.concord.metrics.enabled }}
+            - name: CONCORD_METRICS_ADDR
+              value: ":{{ .Values.concord.metrics.port }}"
+            {{- end }}
+            {{- if .Values.concord.events.natsURL }}
+            - name: CONCORD_NATS_URL
+              value: {{ .Values.concord.events.natsURL | quote }}
+            {{- end }}
+          ports:
+            - name: rpc
+              containerPort: {{ .Values.concord.rpcPort }}
+            {{- if .Values.concord.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.concord.metrics.port }}
+            {{- end }}
+          # TCP-socket probes: is the RPC port accepting connections? A real
+          # HTTP /healthz + /readyz (Dragonfly-aware) is piece #3.
+          livenessProbe:
+            tcpSocket:
+              port: rpc
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: rpc
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          # Container-level hardened posture.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true # concord writes nothing to disk
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.concord.resources | nindent 12 }}
