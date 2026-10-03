@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # chart-test: the end-to-end acceptance gate for the concord Helm chart (ticket
-# 05). It boots a real kind cluster, loads the locally-built image (no registry),
-# installs the chart, and drives the version-check guarantee through concord's
-# RPC seam against the in-cluster concord + Dragonfly — proving the packaged unit
+# 05). It boots a real kind cluster, loads the locally-built concord image into
+# it (no concord registry needed; the cluster pulls the upstream Dragonfly image),
+# installs the chart, and drives the version-check guarantee through concord's RPC
+# seam against the in-cluster concord + Dragonfly — proving the packaged unit
 # genuinely coordinates, not just that YAML renders. Always tears the cluster
 # down on exit.
 #
@@ -12,7 +13,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-export PATH="$(go env GOPATH)/bin:$PATH" # kind lives in Go's bin on this setup
+export PATH="$(go env GOPATH 2>/dev/null)/bin:$PATH" # kind lives in Go's bin on this setup
 
 CLUSTER=concord-chart-test
 CTX=kind-$CLUSTER
@@ -27,14 +28,18 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> create kind cluster ($CLUSTER)"
+kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true # idempotent: clear a leftover from an interrupted run
 kind create cluster --name "$CLUSTER" >/dev/null
 
-echo "==> build + load the local image (offline — no registry)"
+# Load OUR concord image into kind so no concord registry is needed. Dragonfly
+# is an upstream multi-arch public image; the cluster pulls it (kind can't load a
+# manifest-list image). The only external dependency is that public pull.
+echo "==> build + load the concord image into kind"
 docker build -q -f deploy/docker/Dockerfile -t "$IMAGE" . >/dev/null
 kind load docker-image "$IMAGE" --name "$CLUSTER" >/dev/null
 
 echo "==> helm install"
-helm install "$RELEASE" deploy/helm/concord --set image.tag=dev --wait --timeout 150s >/dev/null
+helm install "$RELEASE" deploy/helm/concord --kube-context "$CTX" --set image.tag=dev --wait --timeout 150s >/dev/null
 
 echo "==> wait for rollout"
 kubectl --context "$CTX" rollout status "deploy/$RELEASE-concord" --timeout=120s
@@ -54,8 +59,10 @@ echo -n "==> drive version check (stale blocks, matching allows): "
 stale="" allow="" ok=""
 for _ in $(seq 1 30); do
   if call RecordRead '{"actorId":"e2e","path":"x.go","hash":"v1"}' >/dev/null 2>&1; then
-    stale=$(call CheckEdit '{"actorId":"e2e","path":"x.go","currentHash":"v2"}')
-    allow=$(call CheckEdit '{"actorId":"e2e","path":"x.go","currentHash":"v1"}')
+    # `|| true` so a port-forward flap between calls retries instead of
+    # aborting under `set -e`.
+    stale=$(call CheckEdit '{"actorId":"e2e","path":"x.go","currentHash":"v2"}' || true)
+    allow=$(call CheckEdit '{"actorId":"e2e","path":"x.go","currentHash":"v1"}' || true)
     if echo "$stale" | grep -q 'changed since you last read it' \
       && echo "$allow" | grep -q '"allowed":true'; then
       ok=1

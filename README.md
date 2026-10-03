@@ -138,7 +138,8 @@ Kubernetes cluster. This is the building block the hosted/team-mode operator
 templates per team; solo/local mode is unchanged (ADR-0010).
 
 ```bash
-# Prereqs: docker, kind, helm, kubeconform, kubectl.
+# Prereqs: helm + kubeconform for chart-lint; docker + kind + kubectl + go for
+# chart-test (go is used only to locate the kind binary on PATH).
 
 make image         # build the canonical image (ghcr.io/kminhas21/concord:dev)
 make chart-lint    # fast, no cluster: helm lint + kubeconform (schema) + helm unittest
@@ -156,10 +157,11 @@ helm plugin install https://github.com/helm-unittest/helm-unittest --verify=fals
 (`--verify=false` is only needed on Helm 4.)
 
 `make chart-test` is the end-to-end acceptance gate (the kind analog of
-`obs-smoke`): it boots a `kind` cluster, `kind load`s the local image (offline,
-no registry), `helm install`s the chart, waits for the concord + Dragonfly
-rollout, and drives a real stale `CheckEdit` that **blocks** (and a matching one
-that **allows**) through the RPC seam against the in-cluster unit — then tears the
+`obs-smoke`): it boots a `kind` cluster, `kind load`s the locally-built concord
+image (no concord registry needed; the cluster pulls the upstream Dragonfly
+image), `helm install`s the chart, waits for the concord + Dragonfly rollout, and
+drives a real stale `CheckEdit` that **blocks** (and a matching one that
+**allows**) through the RPC seam against the in-cluster unit — then tears the
 cluster down. Local/opt-in, not on the CI matrix.
 
 ## Scope
