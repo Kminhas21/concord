@@ -174,7 +174,10 @@ jobs:
 
       - uses: azure/setup-helm@v4
         with:
-          version: v3.16.4 # the chart is apiVersion v2, Helm 3-compatible
+          # Helm 4 to match local: the current helm-unittest plugin.yaml uses a
+          # `platformHooks` field that Helm 3.16 is too old to parse. The chart is
+          # apiVersion v2 and renders identically under both.
+          version: v4.3.0
 
       - name: Install kubeconform
         run: |
@@ -183,12 +186,8 @@ jobs:
           sudo tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
 
       - name: Install helm-unittest plugin
-        # Works on both Helm versions: Helm 4 requires --verify=false (the flag
-        # doesn't exist on Helm 3, so fall back to a plain install there).
-        run: |
-          helm version
-          helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false \
-            || helm plugin install https://github.com/helm-unittest/helm-unittest
+        # Helm 4 requires --verify=false (the plugin source isn't signed).
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
 
       - name: helm lint
         run: helm lint deploy/helm/concord
