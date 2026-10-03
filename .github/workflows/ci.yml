@@ -183,7 +183,12 @@ jobs:
           sudo tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
 
       - name: Install helm-unittest plugin
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest
+        # Works on both Helm versions: Helm 4 requires --verify=false (the flag
+        # doesn't exist on Helm 3, so fall back to a plain install there).
+        run: |
+          helm version
+          helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false \
+            || helm plugin install https://github.com/helm-unittest/helm-unittest
 
       - name: helm lint
         run: helm lint deploy/helm/concord
