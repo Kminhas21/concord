@@ -1,0 +1,49 @@
+# Default values for the concord coordination unit. This surface is deliberately
+# the knob set the TeamCoordinator operator will drive per team.
+
+image:
+  repository: ghcr.io/kminhas21/concord
+  # tag defaults to .Chart.AppVersion when empty. NOTE: no image is published to
+  # GHCR until a v* release tag, so a plain `helm install` would ImagePullBackOff
+  # until then; the kind e2e loads a local image (`kind load` + --set image.tag=dev).
+  tag: ""
+  # IfNotPresent lets a locally-loaded image (kind load) be used without pulling.
+  pullPolicy: IfNotPresent
+
+concord:
+  # concord is stateless (all state is in Dragonfly), so replicas are
+  # interchangeable and safe to scale; the operator sets this per team.
+  replicaCount: 1
+  rpcPort: 8080
+  # Silence window after which an untouched intent record expires.
+  intentTTL: 600s
+  metrics:
+    # Exposes the Prometheus /metrics endpoint on its own port + a named Service
+    # port, so an external scraper (or a future ServiceMonitor) can reach it.
+    enabled: true
+    port: 9464
+  events:
+    # Off by default. Set to an EXTERNAL NATS JetStream URL to emit domain events
+    # (this chart does not deploy NATS — observability is a separate concern).
+    natsURL: ""
+  # Scheduler requests/limits. Left empty so it schedules anywhere (e.g. kind).
+  resources: {}
+  # resources:
+  #   requests: { cpu: 50m, memory: 32Mi }
+  #   limits: { cpu: 500m, memory: 128Mi }
+
+dragonfly:
+  image: docker.dragonflydb.io/dragonflydb/dragonfly
+  # Pin to a version or digest in production.
+  tag: latest
+  port: 6379
+  persistence:
+    # concord's coordination state is in-flight (ADR-0002/0004), so the data
+    # store is ephemeral by default. Enable to back it with a PersistentVolume.
+    enabled: false
+    size: 1Gi
+  resources: {}
+
+# Optional name overrides (advanced).
+nameOverride: ""
+fullnameOverride: ""
