@@ -86,9 +86,12 @@ jobs:
         run: go test ./...
 
       # Windows runs only the Docker-free packages — the OS-sensitive path and
-      # case-folding logic. (cmd/concord's shutdown test needs no Docker either.)
+      # case-folding logic. (cmd/concord's shutdown test needs no Docker either;
+      # its Dragonfly-backed tests skip via CONCORD_TEST_SKIP_DOCKER.)
       - name: Test (Docker-free packages)
         if: runner.os == 'Windows'
+        env:
+          CONCORD_TEST_SKIP_DOCKER: "1"
         run: go test ./internal/hook/... ./internal/hashing/... ./cmd/concord
 
   # ---------------------------------------------------------------------------

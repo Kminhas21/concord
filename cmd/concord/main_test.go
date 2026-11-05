@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -175,6 +176,11 @@ func startHealthDaemon(t *testing.T, metricsLn net.Listener) (base string, stopD
 // startDaemon is startHealthDaemon with a team token (empty = auth off).
 func startDaemon(t *testing.T, metricsLn net.Listener, token string) (base string, stopDragonfly func()) {
 	t.Helper()
+	// The Windows CI runner can't run the Linux Dragonfly container; it opts out
+	// explicitly so a missing Docker anywhere else still fails loudly.
+	if os.Getenv("CONCORD_TEST_SKIP_DOCKER") != "" {
+		t.Skip("CONCORD_TEST_SKIP_DOCKER set: skipping Dragonfly-backed test")
+	}
 	dfAddr, terminate, err := test.StartDragonflyCtx(context.Background())
 	if err != nil {
 		t.Fatalf("start Dragonfly (is Docker running?): %v", err)
