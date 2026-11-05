@@ -10,7 +10,7 @@ Pieces #2 and #3 made a coordination unit installable with Helm. This ADR adds a
 - **A label-filtered Secret cache.** The manager caches only Secrets labelled `app.kubernetes.io/managed-by=concord-operator`, so a cluster-wide operator never holds other teams' Secrets in memory. User-supplied `secretRef` Secrets and any unlabelled pre-existing `<cr>-token` are read through the uncached API reader, on demand.
 - **Default images track the operator.** The concord image defaults to the operator's own version (`--concord-image`); `spec.image` overrides it. Dragonfly is pinned by tag, `v2.1.0`, in both the operator flag default and the chart's `dragonfly.tag`, never `latest`; the parity test fails if they diverge.
 - **Persistence is immutable.** `dataStore.persistence` and `storage` cannot change after creation (CEL `self == oldSelf`); StatefulSet volumeClaimTemplates cannot be edited in place, so changing them means delete and recreate.
-- **The team token is generated once and never overwritten.** `<cr>-token` is created only when absent; its SHA-256 on the pod template rolls the pods when it changes. Rotation is deleting the Secret. Zero-gap rotation stays deferred (ADR-0011).
+- **The team token is generated once and never overwritten.** `<cr>-token` is created only when absent; its SHA-256 on the pod template rolls the pods when it changes. Rotation is deleting the Secret. Rotating a user-supplied `secretRef` Secret does NOT roll the pods automatically (the operator does not watch user Secrets, by design: the cache is label-filtered); run `kubectl rollout restart deployment/<cr>-concord` after rotating. Only the generated-token path rolls automatically. Zero-gap rotation stays deferred (ADR-0011).
 
 ## Consequences
 

@@ -192,7 +192,7 @@ the concord pod goes NotReady when Dragonfly is scaled to 0 and Ready again at
 Instead of `helm install` per team, apply a `TeamCoordinator` and the operator
 builds the same coordination unit (ADR-0012). The operator's own install chart
 arrives in the next PR; until then run `go run ./cmd/concord-operator` against a
-cluster that has the CRD from `deploy/helm/concord-operator/crds`.
+cluster that has the CRD from `deploy/helm/concord-operator/crds`. The `concord:dev` default image is never published, so pass `--concord-image` pointing at an image you can pull or load (a release tag such as `ghcr.io/kminhas21/concord:<version>`, or a locally built image loaded into kind): `go run ./cmd/concord-operator --concord-image <image>`. PR-2 ships the install chart.
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -201,13 +201,13 @@ kind: TeamCoordinator
 metadata: {name: acme}
 spec: {repo: github.com/acme/monorepo, replicas: 2}
 EOF
-kubectl get tc                                   # Ready / Progressing, endpoint
+kubectl get tc                                   # Ready, endpoint (Progressing is in .status.conditions)
 kubectl get tc acme -o jsonpath='{.status.endpoint}'   # -> CONCORD_ADDR (http://<endpoint>)
 kubectl get secret acme-token -o jsonpath='{.data.token}' | base64 -d   # -> CONCORD_TOKEN
 ```
 
 The token Secret `<cr>-token` is generated once; set `spec.auth.secretRef` to
-use your own. Deleting the CR removes the whole unit through owner-reference
+use your own. Rotating a `secretRef` Secret does not roll the pods (the operator does not watch it); run `kubectl rollout restart deployment/<cr>-concord` afterwards. Deleting `<cr>-token` regenerates it and rolls the pods automatically. Deleting the CR removes the whole unit through owner-reference
 garbage collection.
 
 ## Scope

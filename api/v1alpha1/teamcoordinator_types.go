@@ -19,6 +19,7 @@ type TeamCoordinatorSpec struct {
 
 	// IntentTTL is how long an intent record lives.
 	// +kubebuilder:default="600s"
+	// +kubebuilder:validation:XValidation:rule="duration(self) > duration('0s')",message="intentTTL must be a positive duration"
 	IntentTTL *metav1.Duration `json:"intentTTL,omitempty"`
 
 	// Image overrides the concord image (default: the operator's version).

@@ -388,7 +388,7 @@ func TestReconciler(t *testing.T) {
 		waitGet(t, &dep, ns, "up-concord")
 		waitGet(t, &sts, ns, "up-dragonfly")
 		waitCond(t, ns, "up", "Progressing", metav1.ConditionTrue, "Reconciling")
-		dep.Status = appsv1.DeploymentStatus{Replicas: 2, ReadyReplicas: 2, AvailableReplicas: 2}
+		dep.Status = appsv1.DeploymentStatus{ObservedGeneration: dep.Generation, Replicas: 2, UpdatedReplicas: 2, ReadyReplicas: 2, AvailableReplicas: 2}
 		if err := c.Status().Update(ctx, &dep); err != nil {
 			t.Fatal(err)
 		}
@@ -397,7 +397,7 @@ func TestReconciler(t *testing.T) {
 		if cd := cond(ns, "up", "Ready"); cd == nil || cd.Status != metav1.ConditionFalse {
 			t.Errorf("Ready before Dragonfly is ready = %+v", cd)
 		}
-		sts.Status = appsv1.StatefulSetStatus{Replicas: 1, ReadyReplicas: 1}
+		sts.Status = appsv1.StatefulSetStatus{ObservedGeneration: sts.Generation, Replicas: 1, ReadyReplicas: 1, CurrentRevision: "r1", UpdateRevision: "r1"}
 		if err := c.Status().Update(ctx, &sts); err != nil {
 			t.Fatal(err)
 		}
@@ -410,6 +410,47 @@ func TestReconciler(t *testing.T) {
 		if got.Status.ReadyReplicas != 2 {
 			t.Errorf("readyReplicas = %d, want 2", got.Status.ReadyReplicas)
 		}
+	})
+
+	t.Run("a rollout in flight is Progressing, not Ready", func(t *testing.T) {
+		ns := newNS(t)
+		create(t, ns, "roll", nil)
+		var dep appsv1.Deployment
+		var sts appsv1.StatefulSet
+		waitGet(t, &dep, ns, "roll-concord")
+		waitGet(t, &sts, ns, "roll-dragonfly")
+		dep.Status = appsv1.DeploymentStatus{ObservedGeneration: dep.Generation, Replicas: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1}
+		sts.Status = appsv1.StatefulSetStatus{ObservedGeneration: sts.Generation, Replicas: 1, ReadyReplicas: 1, CurrentRevision: "r1", UpdateRevision: "r1"}
+		if err := c.Status().Update(ctx, &dep); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Status().Update(ctx, &sts); err != nil {
+			t.Fatal(err)
+		}
+		waitCond(t, ns, "roll", "Ready", metav1.ConditionTrue, "Available")
+		oldGen := dep.Generation
+
+		// Spec change bumps the Deployment generation; the old pod stays available.
+		var tc v1alpha1.TeamCoordinator
+		if err := c.Get(ctx, key(ns, "roll"), &tc); err != nil {
+			t.Fatal(err)
+		}
+		tc.Spec.Image = "ghcr.io/kminhas21/concord:next"
+		if err := c.Update(ctx, &tc); err != nil {
+			t.Fatal(err)
+		}
+		eventually(t, "Deployment generation bump", func() bool {
+			return c.Get(ctx, key(ns, "roll-concord"), &dep) == nil && dep.Generation > oldGen
+		})
+		waitCond(t, ns, "roll", "Ready", metav1.ConditionFalse, "Progressing")
+		waitCond(t, ns, "roll", "Progressing", metav1.ConditionTrue, "Reconciling")
+
+		dep.Status = appsv1.DeploymentStatus{ObservedGeneration: dep.Generation, Replicas: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1}
+		if err := c.Status().Update(ctx, &dep); err != nil {
+			t.Fatal(err)
+		}
+		waitCond(t, ns, "roll", "Ready", metav1.ConditionTrue, "Available")
+		waitCond(t, ns, "roll", "Progressing", metav1.ConditionFalse, "")
 	})
 
 	t.Run("status is not rewritten when nothing changed", func(t *testing.T) {

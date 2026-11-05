@@ -65,6 +65,24 @@ func TestTeamCoordinatorAPI(t *testing.T) {
 		}
 	})
 
+	t.Run("intentTTL must be a positive duration", func(t *testing.T) {
+		for _, tt := range []struct {
+			ttl string
+			ok  bool
+		}{{"banana", false}, {"0s", false}, {"-5s", false}, {"90s", true}} {
+			raw := map[string]any{"apiVersion": "concord.kminhas21.github.io/v1alpha1", "kind": "TeamCoordinator",
+				"metadata": map[string]any{"name": "ttl-" + strings.NewReplacer("-", "m", "0", "z").Replace(tt.ttl), "namespace": "default"},
+				"spec":     map[string]any{"repo": "r", "intentTTL": tt.ttl}}
+			err := c.Create(ctx, unstructuredOf(raw))
+			if tt.ok && err != nil {
+				t.Errorf("intentTTL %q: want accepted, got %v", tt.ttl, err)
+			}
+			if !tt.ok && !apierrors.IsInvalid(err) {
+				t.Errorf("intentTTL %q: want Invalid, got %v", tt.ttl, err)
+			}
+		}
+	})
+
 	t.Run("persistence immutable, replicas mutable", func(t *testing.T) {
 		tc := newTC("immut")
 		if err := c.Create(ctx, tc); err != nil {

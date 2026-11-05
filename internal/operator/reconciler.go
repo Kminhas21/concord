@@ -131,7 +131,12 @@ func (r *Reconciler) updateStatus(ctx context.Context, tc *v1alpha1.TeamCoordina
 	if err := r.Get(ctx, types.NamespacedName{Namespace: tc.Namespace, Name: dragonflyName(tc)}, &sts); client.IgnoreNotFound(err) != nil {
 		return err
 	}
-	ready := b == nil && dep.Status.AvailableReplicas == tc.Spec.Replicas && sts.Status.ReadyReplicas == 1
+	// Ready means the rollout finished, not just that old pods are still available.
+	ready := b == nil &&
+		dep.Status.ObservedGeneration >= dep.Generation &&
+		dep.Status.UpdatedReplicas == tc.Spec.Replicas && dep.Status.AvailableReplicas == tc.Spec.Replicas &&
+		sts.Status.ObservedGeneration >= sts.Generation && sts.Status.ReadyReplicas == 1 &&
+		sts.Status.UpdateRevision == sts.Status.CurrentRevision
 
 	orig := tc.DeepCopy()
 	tc.Status.ObservedGeneration = tc.Generation

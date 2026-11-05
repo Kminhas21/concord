@@ -30,14 +30,14 @@ Team mode scales the *blast radius* of the existing guarantee; it does not chang
 8. As a platform engineer, I want an operator that reconciles each `TeamCoordinator` into a running concord + data stack, so that I never hand-assemble per-team deployments.
 9. As a platform engineer, I want the operator to self-heal drift (someone edits a managed Deployment; it's corrected), so that the declared state is the real state.
 10. As a platform engineer, I want the operator to report status/conditions (Ready, Progressing, error) on each `TeamCoordinator`, so that I can see tenant health with `kubectl get`.
-11. As a platform engineer, I want deleting a `TeamCoordinator` to clean up its whole stack (finalizer), so that de-provisioning a team leaves nothing behind.
-12. As a platform engineer, I want the operator to provision a `ServiceMonitor` per team, so that Prometheus scrapes each tenant automatically (ties into observability).
+11. As a platform engineer, I want deleting a `TeamCoordinator` to clean up its whole stack (owner-reference garbage collection), so that de-provisioning a team leaves nothing behind.
+12. As a platform engineer, I want the operator to provision a `ServiceMonitor` per team (deferred to pieces #6-7), so that Prometheus scrapes each tenant automatically (ties into observability).
 
 **Networking & access**
 13. As a platform engineer, I want in-cluster clients to reach a team's concord via an internal Service, so that no tenant is needlessly exposed.
 14. As a platform engineer, I want external laptop access to be opt-in per team via a shared ALB with host-based routing, so that I don't run a load balancer per tenant.
 15. As a security-minded lead, I want each team's concord to require a per-team credential, so that only authorized clients coordinate against it.
-16. As a platform engineer, I want the operator to issue and rotate a per-team token as a Kubernetes Secret, so that credential lifecycle is automated.
+16. As a platform engineer, I want the operator to issue a per-team token as a Kubernetes Secret (rotation is delete-and-regenerate; no scheduled rotation), so that credential lifecycle is automated.
 
 **Delivery, infra, and operations**
 17. As a platform engineer, I want the whole platform (operator, CRDs, ingress controller, observability) deployed by Argo CD from git, so that the cluster is a pure function of git.
@@ -78,7 +78,7 @@ status:
 
 `ingress` and the per-team `ServiceMonitor` are deferred to pieces #5 and #6-7; the operator (piece #4, `docs/specs/operator.md`) ships the Deployment, Dragonfly, Services, NetworkPolicy, and token Secret. concord listens on port 8080.
 
-**Reconcile behavior.** For each `TeamCoordinator`, the operator creates/updates, in that team's namespace: a concord **Deployment** (N replicas), a **Dragonfly StatefulSet** (self-hosted per team), a **Service** (internal), an optional **Ingress** (when `ingress.external`), a **NetworkPolicy** (namespace isolation), a **ServiceMonitor** (Prometheus), and a **Secret** (the per-team token). It corrects drift, sets status conditions, and uses a **finalizer** so deletion tears the stack down.
+**Reconcile behavior.** For each `TeamCoordinator`, the operator creates/updates, in that team's namespace: a concord **Deployment** (N replicas), a **Dragonfly StatefulSet** (self-hosted per team), a **Service** (internal), a **NetworkPolicy** (namespace isolation), and a **Secret** (the per-team token); the Ingress is deferred to piece #5 and the ServiceMonitor to pieces #6-7. It corrects drift and sets status conditions; owner-reference garbage collection tears the stack down on deletion (no finalizer until an out-of-namespace resource exists, piece #5).
 
 **Data layer.** Self-hosted Dragonfly StatefulSet per team, provisioned by the operator — uniform locally (minikube) and on EKS. Because concord uses only basic Redis operations (SET/GET/SADD/SMEMBERS/EXPIRE/pipeline — no Dragonfly-specific features), **AWS ElastiCache (Valkey/Redis) is a documented drop-in managed alternative**, not the default (managing per-team ElastiCache from the operator would require ACK/Crossplane and break local↔cloud parity).
 
@@ -100,7 +100,7 @@ status:
 
 **What makes a good test.** Assert observable behavior — the objects the operator produces, the API responses concord returns, the endpoints that answer — never internal wiring.
 
-**The operator — the one new seam: `envtest`.** controller-runtime's `envtest` stands up a real API server + etcd. A reconcile test applies a `TeamCoordinator` CR and asserts the expected objects exist with the correct spec (Deployment replicas, StatefulSet, Service, NetworkPolicy, ServiceMonitor, Secret), that status conditions are set, that drift is corrected on re-reconcile, and that deletion (finalizer) removes the stack. This is the standard, highest seam for operators and keeps tests off internal reconcile helpers.
+**The operator — the one new seam: `envtest`.** controller-runtime's `envtest` stands up a real API server + etcd. A reconcile test applies a `TeamCoordinator` CR and asserts the expected objects exist with the correct spec (Deployment replicas, StatefulSet, Service, NetworkPolicy, Secret), that status conditions are set, that drift is corrected on re-reconcile, and that deletion (owner-reference GC) removes the stack. This is the standard, highest seam for operators and keeps tests off internal reconcile helpers.
 
 **Team-mode app changes — the existing RPC seam.** Tenant scoping and auth are tested through the existing Connect-client seam (drive `CheckEdit`/`QueryIntent`; assert a request without a valid team token is rejected, and that two teams' state is isolated). Prior art: the coordination package's existing seam tests + the `StartDragonfly` testcontainers harness.
 

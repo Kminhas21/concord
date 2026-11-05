@@ -474,3 +474,8 @@ Format per entry:
 **Parity findings:** one real difference, the Dragonfly object name (`<cr>-dragonfly` in the spec, `<release>-concord-dragonfly` in the chart). The spec decides child names, so builders were not changed; the test maps the chart name onto the spec's and records it as a deliberate delta in ADR-0012. Everything else matched.
 **Why:** Two install paths for one unit must not drift; a floating `latest` makes the same CR deploy different Dragonfly versions over time.
 **Links:** ADR-0012; docs/specs/operator.md (Testing Decisions); `.superpowers/sdd/plan-operator/task-4-brief.md`.
+
+## 2026-11-05 — Operator PR-1 final-review fixes
+**Decision:** `spec.intentTTL` carries a CEL rule `duration(self) > duration('0s')`, so the apiserver rejects unparseable and non-positive TTLs (a malformed value previously failed the whole typed list decode and halted the operator for every team). `Ready=True` now also requires a finished rollout: Deployment `observedGeneration >= generation` and `updatedReplicas == availableReplicas == spec.replicas`, StatefulSet `observedGeneration >= generation`, `readyReplicas == 1` and `updateRevision == currentRevision`; otherwise `Ready=False/Progressing`. Docs: rotating a user-supplied `secretRef` Secret does not roll pods (run `kubectl rollout restart deployment/<cr>-concord`; only the generated token rolls automatically); platform.md no longer claims a finalizer, Ingress or ServiceMonitor for this piece; README quickstart tells the reader to pass `--concord-image`.
+**Why:** Final whole-branch review findings C1, I1, I2 and minors 3-4.
+**Links:** `.superpowers/sdd/plan-operator/final-review-pr1.md`; docs/specs/operator.md.

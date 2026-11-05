@@ -112,6 +112,9 @@ spec:
                 default: 600s
                 description: IntentTTL is how long an intent record lives.
                 type: string
+                x-kubernetes-validations:
+                - message: intentTTL must be a positive duration
+                  rule: duration(self) > duration('0s')
               replicas:
                 default: 1
                 description: Replicas is the number of concord pods.
