@@ -26,7 +26,7 @@ func main() {
 	flag.StringVar(&cfg.ConcordImage, "concord-image", operator.DefaultConcordRepository+":"+version, "default concord image (spec.image overrides)")
 	flag.StringVar(&cfg.DragonflyImage, "dragonfly-image", operator.DefaultDragonflyImage, "default Dragonfly image (spec.dataStore.image overrides)")
 	flag.BoolVar(&leaderElect, "leader-elect", false, "enable leader election")
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8443", "metrics endpoint address (0 disables)")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8082", "metrics endpoint address (plain HTTP, matches the chart; 0 disables)")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "health probe address")
 	flag.Parse()
 
@@ -37,12 +37,13 @@ func main() {
 	must(v1alpha1.AddToScheme(scheme))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		Cache:                  operator.CacheOptions(),
-		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         leaderElect,
-		LeaderElectionID:       "concord-operator.concord.kminhas21.github.io",
+		Scheme:                        scheme,
+		Cache:                         operator.CacheOptions(),
+		Metrics:                       metricsserver.Options{BindAddress: metricsAddr},
+		HealthProbeBindAddress:        probeAddr,
+		LeaderElection:                leaderElect,
+		LeaderElectionReleaseOnCancel: true, // safe: main exits right after mgr.Start returns
+		LeaderElectionID:              "concord-operator.concord.kminhas21.github.io",
 	})
 	must(err)
 	must(mgr.AddHealthzCheck("healthz", healthz.Ping))

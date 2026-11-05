@@ -185,6 +185,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build operator image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: operator
+          push: false
+          tags: ghcr.io/kminhas21/concord-operator:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   # ---------------------------------------------------------------------------
   # chart — fast, cluster-free checks of the Helm chart: structural lint,
   # kubeconform schema-validation of the rendered manifests against the real
@@ -222,3 +233,11 @@ jobs:
 
       - name: helm unittest
         run: helm unittest deploy/helm/concord
+
+      # The operator install chart (CRD + generated ClusterRole + Deployment).
+      - name: operator chart (lint, kubeconform, unittest)
+        run: |
+          set -o pipefail
+          helm lint deploy/helm/concord-operator
+          helm template deploy/helm/concord-operator | kubeconform -strict -summary
+          helm unittest deploy/helm/concord-operator

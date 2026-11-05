@@ -2,10 +2,12 @@ SHELL := bash
 GOBIN := $(shell go env GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
-.PHONY: setup generate envtest-assets build test gate fmt obs-smoke obs-up obs-down image chart-lint chart-test
+.PHONY: setup generate envtest-assets build test gate fmt obs-smoke obs-up obs-down image chart-lint chart-test operator-test
 
-# CHART is the concord coordination-unit Helm chart.
+# CHART is the concord coordination-unit Helm chart; OPERATOR_CHART installs the
+# TeamCoordinator operator.
 CHART ?= deploy/helm/concord
+OPERATOR_CHART ?= deploy/helm/concord-operator
 
 # IMAGE is the canonical concord image tag. The local/dev tag is used by the
 # observability stack and the kind chart test (loaded via `kind load`, never
@@ -65,6 +67,9 @@ chart-lint:
 	helm lint $(CHART)
 	set -o pipefail; helm template $(CHART) | kubeconform -strict -summary
 	helm unittest $(CHART)
+	helm lint $(OPERATOR_CHART)
+	set -o pipefail; helm template $(OPERATOR_CHART) | kubeconform -strict -summary
+	helm unittest $(OPERATOR_CHART)
 
 # chart-test: the end-to-end acceptance gate — boot a kind cluster, load the
 # local image, install the chart, and drive a real stale CheckEdit that BLOCKS
@@ -73,6 +78,12 @@ chart-lint:
 # local/opt-in, not on the CI matrix.
 chart-test:
 	bash scripts/chart-test.sh
+
+# operator-test: the operator's kind end-to-end gate -- install the operator
+# chart, apply a TeamCoordinator, assert Ready + authenticated RPC + delete GC.
+# Needs docker + kind + helm + kubectl; local/opt-in like chart-test.
+operator-test:
+	bash scripts/operator-test.sh
 
 # obs-smoke: boot the observability compose stack and assert metrics flow
 # end-to-end (daemon -> Prometheus -> Grafana), then tear it down. The infra

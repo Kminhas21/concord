@@ -53,50 +53,11 @@ echo "==> port-forward the concord RPC service"
 kubectl --context "$CTX" port-forward "svc/$RELEASE-concord" 8080:8080 >/tmp/concord-chart-pf.log 2>&1 &
 PF_PID=$!
 
-RPC=http://localhost:8080/concord.v1.CoordinationService
-# call METHOD BODY [TOKEN]: POST a Connect JSON call, with a bearer token if given.
-call() {
-  local auth=()
-  [ -n "${3:-}" ] && auth=(-H "Authorization: Bearer $3")
-  curl -s -X POST "$RPC/$1" -H 'Content-Type: application/json' ${auth[@]+"${auth[@]}"} -d "$2"
-}
-fail() { echo "FAIL"; shift; for l in "$@"; do echo "  $l"; done; exit 1; }
+RPC_URL=http://localhost:8080
+source scripts/lib/rpc.sh
 
-# Auth: a missing or wrong token is rejected in-cluster. Retry to absorb
-# port-forward + rollout readiness (the obs-smoke pattern).
-echo -n "==> auth rejects a missing and a wrong token: "
-none="" wrong="" ok=""
-for _ in $(seq 1 30); do
-  none=$(call RecordRead '{"actorId":"e2e","path":"x.go","hash":"v1"}' || true)
-  wrong=$(call RecordRead '{"actorId":"e2e","path":"x.go","hash":"v1"}' "not-$TOKEN" || true)
-  if echo "$none" | grep -q unauthenticated && echo "$wrong" | grep -q unauthenticated; then
-    ok=1
-    break
-  fi
-  sleep 1
-done
-[ -n "$ok" ] || fail x "no-token response: $none" "wrong-token response: $wrong"
-echo "ok"
-
-# Drive the version check with the right token: record a read at v1, then a
-# stale edit (v2) must BLOCK and a matching edit (v1) must ALLOW.
-echo -n "==> drive version check with the good token (stale blocks, matching allows): "
-stale="" allow="" ok=""
-for _ in $(seq 1 30); do
-  if call RecordRead '{"actorId":"e2e","path":"x.go","hash":"v1"}' "$TOKEN" | grep -vq unauthenticated; then
-    # `|| true` so a port-forward flap between calls retries instead of
-    # aborting under `set -e`.
-    stale=$(call CheckEdit '{"actorId":"e2e","path":"x.go","currentHash":"v2"}' "$TOKEN" || true)
-    allow=$(call CheckEdit '{"actorId":"e2e","path":"x.go","currentHash":"v1"}' "$TOKEN" || true)
-    if echo "$stale" | grep -q 'changed since you last read it'       && echo "$allow" | grep -q '"allowed":true'; then
-      ok=1
-      break
-    fi
-  fi
-  sleep 1
-done
-[ -n "$ok" ] || fail x "stale response: $stale" "allow response: $allow"
-echo "ok"
+assert_auth_rejects "$TOKEN"
+assert_version_check "$TOKEN"
 
 # Readiness tracks Dragonfly: 0 replicas -> concord pod NotReady; back to 1 -> Ready.
 SEL="app.kubernetes.io/instance=$RELEASE,app.kubernetes.io/component=coordination"

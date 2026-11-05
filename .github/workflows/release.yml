@@ -74,3 +74,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The operator image: the same Dockerfile's `operator` target, same tags.
+      - id: meta-operator
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/kminhas21/concord-operator
+          tags: |
+            type=semver,pattern={{version}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: operator
+          build-args: VERSION=${{ steps.meta-operator.outputs.version }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-operator.outputs.tags }}
+          labels: ${{ steps.meta-operator.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
