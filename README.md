@@ -26,8 +26,10 @@ and needs no liveness detection or reaper.
 **Availability (honest scope): the version check fails *open*.** When the daemon
 is unreachable, or the hook cannot hash the target file, the `PreToolUse` hook
 exits 0 and the edit proceeds (with a stderr warning) — concord never bricks
-editing when its own machinery is down. So "mandatory" means *enforced whenever
-the daemon is reachable*, not *enforced unconditionally*. Keep the daemon running
+editing when its own machinery is down. In team mode a rejected team token also
+fails open, with a loud `UNPROTECTED` warning (ADR-0011). So "mandatory" means
+*enforced whenever the daemon is reachable and the client is authorized*, not
+*enforced unconditionally*. Keep the daemon running
 for the guarantee to hold; a crashed daemon degrades to no protection, not to a
 block.
 
@@ -189,8 +191,9 @@ the concord pod goes NotReady when Dragonfly is scaled to 0 and Ready again at
 
 concord owns only in-flight coordination state. Out of scope by design: leases,
 TTL-based locking, fencing, deadlock detection; durable memory and cross-session
-retrieval (Hindsight's job); multi-node or cross-machine coordination (one daemon
-per machine); and blocking on intent overlap in any form.
+retrieval (Hindsight's job); multi-node or cross-machine coordination in solo/local mode (one
+daemon per machine; hosted mode is one networked coordination unit per team,
+ADR-0010, and coordination *across* units stays out of scope); and blocking on intent overlap in any form.
 
 ## Project docs
 

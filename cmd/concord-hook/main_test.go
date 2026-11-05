@@ -225,3 +225,22 @@ func TestPreToolUseThroughAuth(t *testing.T) {
 		t.Errorf("right token, stale edit: exit=%d stderr=%q, want 2 (blocked)", code, stderr)
 	}
 }
+
+// A redirect must not carry the team token to another host (ADR-0011 hardening).
+func TestNewClientDoesNotForwardBearerOnRedirect(t *testing.T) {
+	var leaked string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = r.Header.Get("Authorization")
+	}))
+	t.Cleanup(other.Close)
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL, http.StatusFound)
+	}))
+	t.Cleanup(first.Close)
+	t.Setenv("CONCORD_ADDR", first.URL)
+	t.Setenv("CONCORD_TOKEN", "s3cret")
+	_, _ = newClient().Ping(context.Background(), connect.NewRequest(&concordv1.PingRequest{}))
+	if leaked != "" {
+		t.Fatalf("redirect target received Authorization %q, want none", leaked)
+	}
+}

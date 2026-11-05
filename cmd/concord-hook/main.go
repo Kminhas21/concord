@@ -50,7 +50,8 @@ func newClient() concordv1connect.CoordinationServiceClient {
 	hc := http.DefaultClient
 	// Trimmed: a Kubernetes Secret value often ends in a newline.
 	if tok := strings.TrimSpace(os.Getenv("CONCORD_TOKEN")); tok != "" {
-		hc = &http.Client{Transport: bearerTransport{tok}}
+		// concord never redirects; refuse to follow so the token is not re-sent to another host.
+		hc = &http.Client{Transport: bearerTransport{tok}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 	return concordv1connect.NewCoordinationServiceClient(hc, daemonURL())
 }

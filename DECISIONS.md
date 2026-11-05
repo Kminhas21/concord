@@ -445,3 +445,8 @@ Format per entry:
 **Why:** The unit tests prove each part; only a real cluster proves the packaged unit rejects in-cluster and that probes follow Dragonfly.
 **Alternatives:** Asserting NetworkPolicy enforcement on kind — skipped; kind's default CNI may not enforce it, so the helm-unittest shape check stands.
 **Links:** ADR-0011; docs/specs/team-mode.md "kind e2e"; `.superpowers/sdd/plan/task-5-brief.md`.
+
+## 2026-11-04 — Team-mode final-review fix wave
+**Decision:** (1) README availability paragraph now says the check is enforced whenever the daemon is reachable *and the client is authorized*; a rejected team token fails open with a loud `UNPROTECTED` warning (ADR-0011). (2) README Scope qualifies "one daemon per machine" as solo/local mode; hosted mode is one networked unit per team (ADR-0010), cross-unit coordination stays out of scope. (3) `concord-hook`'s authenticated client sets `CheckRedirect` to `http.ErrUseLastResponse`, so the bearer RoundTripper cannot re-send the token to a redirect target; test added (RED: target received `Bearer s3cret`; GREEN after). (4) The daemon logs one startup line stating team-token auth on/off, distinguishing unset from set-but-blank (blank stays off; token never logged). (5) `scripts/chart-test.sh` `call()` uses `${auth[@]+"${auth[@]}"}` so bash <4.4 under `set -u` does not abort on an empty array; token `tr -d` uses `' \n'`.
+**Why:** Final review of piece #3: honest guarantee wording, token hygiene, and operator visibility of a silently-off auth.
+**Links:** ADR-0011; ADR-0010; `.superpowers/sdd/plan/final-fix-findings.md`.

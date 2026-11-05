@@ -281,6 +281,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("concord: invalid CONCORD_INTENT_TTL: %v", err)
 	}
+	switch {
+	case cfg.token != "":
+		log.Print("concord: team-token auth enabled")
+	case os.Getenv("CONCORD_TOKEN") != "":
+		log.Print("concord: CONCORD_TOKEN is set but blank - team-token auth OFF")
+	default:
+		log.Print("concord: team-token auth OFF (CONCORD_TOKEN unset)")
+	}
 
 	ln, err := net.Listen("tcp", cfg.addr)
 	if err != nil {

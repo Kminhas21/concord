@@ -39,8 +39,7 @@ docker build -q -f deploy/docker/Dockerfile -t "$IMAGE" . >/dev/null
 kind load docker-image "$IMAGE" --name "$CLUSTER" >/dev/null
 
 # Team token: random per run, never echoed. Secret created idempotently.
-TOKEN=$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' 
-')
+TOKEN=$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
 kubectl --context "$CTX" create secret generic cu-token --from-literal=token="$TOKEN"   --dry-run=client -o yaml | kubectl --context "$CTX" apply -f - >/dev/null
 
 echo "==> helm install"
@@ -59,7 +58,7 @@ RPC=http://localhost:8080/concord.v1.CoordinationService
 call() {
   local auth=()
   [ -n "${3:-}" ] && auth=(-H "Authorization: Bearer $3")
-  curl -s -X POST "$RPC/$1" -H 'Content-Type: application/json' "${auth[@]}" -d "$2"
+  curl -s -X POST "$RPC/$1" -H 'Content-Type: application/json' ${auth[@]+"${auth[@]}"} -d "$2"
 }
 fail() { echo "FAIL"; shift; for l in "$@"; do echo "  $l"; done; exit 1; }
 
