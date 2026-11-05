@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -184,6 +185,18 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 	mux := http.NewServeMux()
 	path, handler := concordv1connect.NewCoordinationServiceHandler(svc, handlerOpts...)
 	mux.Handle(path, handler)
+	// Plain handlers, outside the Connect chain: liveness never touches Dragonfly,
+	// readiness reflects it.
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") })
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		pctx, pcancel := context.WithTimeout(r.Context(), time.Second)
+		defer pcancel()
+		if err := rs.Ping(pctx); err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = io.WriteString(w, "ok")
+	})
 
 	srv := &http.Server{Handler: mux}
 	serveErr := make(chan error, 1)

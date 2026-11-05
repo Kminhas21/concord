@@ -6,12 +6,14 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
 	concordv1 "github.com/Kminhas21/concord/gen/concord/v1"
 	"github.com/Kminhas21/concord/gen/concord/v1/concordv1connect"
+	"github.com/Kminhas21/concord/test"
 )
 
 // TestRunServesThenShutsDownGracefully verifies the daemon serves requests and
@@ -160,4 +162,66 @@ func TestMetricsDisabledLeavesNoEndpoint(t *testing.T) {
 
 	cancel()
 	<-done
+}
+
+// startHealthDaemon boots run() against a real Dragonfly and returns the RPC
+// base URL plus a func that terminates Dragonfly (to simulate it going away).
+func startHealthDaemon(t *testing.T, metricsLn net.Listener) (base string, stopDragonfly func()) {
+	t.Helper()
+	dfAddr, terminate, err := test.StartDragonflyCtx(context.Background())
+	if err != nil {
+		t.Fatalf("start Dragonfly (is Docker running?): %v", err)
+	}
+	var once sync.Once
+	stop := func() { once.Do(terminate) }
+	t.Cleanup(stop)
+
+	ln := freeTCP(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, ln, metricsLn, config{addr: ln.Addr().String(), dragonflyAddr: dfAddr, intentTTL: time.Minute})
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+	return "http://" + ln.Addr().String(), stop
+}
+
+func getStatus(t *testing.T, url string) int {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		resp, err := http.Get(url)
+		if err == nil {
+			_ = resp.Body.Close()
+			return resp.StatusCode
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GET %s never answered: %v", url, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestHealthzAndReadyzOKWithDragonflyUp(t *testing.T) {
+	base, _ := startHealthDaemon(t, nil) // metrics disabled: endpoints live on the RPC port
+	if got := getStatus(t, base+"/healthz"); got != http.StatusOK {
+		t.Fatalf("/healthz = %d, want 200", got)
+	}
+	if got := getStatus(t, base+"/readyz"); got != http.StatusOK {
+		t.Fatalf("/readyz = %d, want 200", got)
+	}
+}
+
+func TestReadyzFailsWhenDragonflyDownButHealthzStaysUp(t *testing.T) {
+	base, stopDragonfly := startHealthDaemon(t, freeTCP(t))
+	if got := getStatus(t, base+"/readyz"); got != http.StatusOK {
+		t.Fatalf("/readyz = %d, want 200 before stop", got)
+	}
+	stopDragonfly()
+	if got := getStatus(t, base+"/readyz"); got != http.StatusServiceUnavailable {
+		t.Fatalf("/readyz = %d, want 503 with Dragonfly down", got)
+	}
+	if got := getStatus(t, base+"/healthz"); got != http.StatusOK {
+		t.Fatalf("/healthz = %d, want 200 (liveness must not depend on Dragonfly)", got)
+	}
 }
