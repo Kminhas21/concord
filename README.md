@@ -196,7 +196,8 @@ The operator installs from its own chart, `deploy/helm/concord-operator` (CRD, C
 docker build -f deploy/docker/Dockerfile -t ghcr.io/kminhas21/concord:dev .
 docker build -f deploy/docker/Dockerfile --target operator -t ghcr.io/kminhas21/concord-operator:dev .
 kind load docker-image ghcr.io/kminhas21/concord:dev ghcr.io/kminhas21/concord-operator:dev
-helm install concord-operator deploy/helm/concord-operator -n concord-system --create-namespace \n  --set image.tag=dev --set concordImage=ghcr.io/kminhas21/concord:dev
+helm install concord-operator deploy/helm/concord-operator -n concord-system --create-namespace \
+  --set image.tag=dev --set concordImage=ghcr.io/kminhas21/concord:dev
 ```
 
 `make operator-test` runs exactly this on a throwaway kind cluster and asserts the CR becomes `Ready`, auth and the version check work, and deleting the CR removes the unit. The manager metrics endpoint (`metricsPort`, default 8082) is plain HTTP with no authn; keep it cluster-internal. Without a cluster-side install you can still `go run ./cmd/concord-operator --concord-image <image>` against a cluster that has the CRD.
