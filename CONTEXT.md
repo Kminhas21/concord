@@ -73,3 +73,19 @@ _Avoid_: log line (too general), message (ambiguous with RPC)
 **Emitter**:
 The narrow seam the coordination service publishes domain events through. Every Emitter is non-blocking and best-effort: production uses an asynchronous, NATS-backed emitter that drops events (and counts the drops) under backpressure rather than ever slowing or failing a decision (ADR-0009).
 _Avoid_: publisher (reserve for the internal drain), bus
+
+**Coordination unit**:
+One concord Deployment plus its own single Dragonfly, serving one team namespace. Coordination state is never shared across units (ADR-0010).
+_Avoid_: cluster, tenant, instance
+
+**Hosted mode**:
+concord run as a networked container behind a cluster-internal Service, serving every agent that can reach its coordination unit. Same guarantee as solo/local mode with a larger blast radius (ADR-0010).
+_Avoid_: cloud mode, server mode
+
+**Solo/local mode**:
+One daemon per machine, reachable only over loopback, no authentication (ADR-0007).
+_Avoid_: standalone mode
+
+**Team token**:
+The static bearer secret a coordination unit's clients present as `Authorization: Bearer <token>` when the daemon has `CONCORD_TOKEN` set. A shared perimeter, not an identity: it does not distinguish actors (ADR-0011).
+_Avoid_: lease token, API key

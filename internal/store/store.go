@@ -67,6 +67,9 @@ func NewRedisStore(addr string, intentTTL time.Duration, opts ...StoreOption) *R
 	return s
 }
 
+// Ping issues a Redis PING; nil means Dragonfly is reachable.
+func (s *RedisStore) Ping(ctx context.Context) error { return s.client.Ping(ctx).Err() }
+
 // Close releases the underlying client.
 func (s *RedisStore) Close() error { return s.client.Close() }
 

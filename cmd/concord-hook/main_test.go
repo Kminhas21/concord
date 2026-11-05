@@ -1,11 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"github.com/Kminhas21/concord/internal/auth"
+	"github.com/Kminhas21/concord/internal/hook"
+	"github.com/Kminhas21/concord/internal/rpcaddr"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -116,5 +122,106 @@ func TestShellReconcileAttributesByContentDelta(t *testing.T) {
 	}
 	if !barResp.Msg.GetAllowed() {
 		t.Fatalf("A's edit of its own shell-written bar.go was blocked: %q", barResp.Msg.GetMessage())
+	}
+}
+
+func TestDaemonURL(t *testing.T) {
+	for _, c := range []struct{ addr, want string }{
+		{"", "http://" + rpcaddr.Default},
+		{"host:1234", "http://host:1234"},
+		{"https://x.example", "https://x.example"},
+	} {
+		t.Setenv("CONCORD_ADDR", c.addr)
+		if got := daemonURL(); got != c.want {
+			t.Errorf("CONCORD_ADDR=%q: got %q, want %q", c.addr, got, c.want)
+		}
+	}
+}
+
+func TestNewClientSendsTrimmedBearerOnlyWhenSet(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("{}"))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("CONCORD_ADDR", srv.URL)
+	ping := func() {
+		_, _ = newClient().Ping(context.Background(), connect.NewRequest(&concordv1.PingRequest{}))
+	}
+	t.Setenv("CONCORD_TOKEN", "")
+	ping()
+	t.Setenv("CONCORD_TOKEN", "s3cret\n")
+	ping()
+	if len(got) != 2 || got[0] != "" || got[1] != "Bearer s3cret" {
+		t.Fatalf("Authorization headers = %q, want [\"\" \"Bearer s3cret\"]", got)
+	}
+}
+
+// TestHookHelper is the re-exec target: it runs the real hook entrypoint so the
+// tests can observe its exit code and stderr.
+func TestHookHelper(t *testing.T) {
+	if os.Getenv("CONCORD_HOOK_HELPER") != "1" {
+		t.Skip("re-exec helper")
+	}
+	os.Args = []string{"concord-hook", "pre-tool-use"}
+	main()
+}
+
+// runPreToolUse runs `concord-hook pre-tool-use` on an Edit of path, returning
+// exit code and stderr.
+func runPreToolUse(t *testing.T, addr, token, path string) (int, string) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHookHelper$")
+	cmd.Env = append(os.Environ(), "CONCORD_HOOK_HELPER=1", "CONCORD_ADDR="+addr, "CONCORD_TOKEN="+token)
+	in, _ := json.Marshal(map[string]any{
+		"session_id": "s", "tool_name": "Edit", "tool_input": map[string]any{"file_path": path},
+	})
+	cmd.Stdin = bytes.NewReader(in)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	return code, stderr.String()
+}
+
+func TestPreToolUseThroughAuth(t *testing.T) {
+	addr := test.StartDragonfly(t)
+	rs := store.NewRedisStore(addr, time.Minute)
+	mux := http.NewServeMux()
+	p, h := concordv1connect.NewCoordinationServiceHandler(coordination.NewService(rs, rs),
+		connect.WithInterceptors(auth.Interceptor("s3cret", func(context.Context) {})))
+	mux.Handle(p, h)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	// The hook's actor reads the file at v1, then it changes on disk: a stale edit.
+	file := filepath.Join(t.TempDir(), "f.go")
+	if err := os.WriteFile(file, []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	actor := hook.Input{SessionID: "s"}.ActorID()
+	t.Setenv("CONCORD_ADDR", srv.URL)
+	t.Setenv("CONCORD_TOKEN", "s3cret")
+	if _, err := newClient().RecordRead(context.Background(), connect.NewRequest(&concordv1.RecordReadRequest{
+		ActorId: actor, Path: canonical(file), Hash: hashOf(t, file),
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code, stderr := runPreToolUse(t, srv.URL, "wrong", file); code != 0 || !strings.Contains(stderr, "concord: auth rejected — edits UNPROTECTED, check CONCORD_TOKEN") {
+		t.Errorf("wrong token: exit=%d stderr=%q, want 0 + UNPROTECTED warning", code, stderr)
+	}
+	if code, stderr := runPreToolUse(t, srv.URL, "s3cret\n", file); code != 2 {
+		t.Errorf("right token, stale edit: exit=%d stderr=%q, want 2 (blocked)", code, stderr)
 	}
 }

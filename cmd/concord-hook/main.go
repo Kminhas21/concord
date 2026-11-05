@@ -31,11 +31,28 @@ func daemonURL() string {
 	if addr == "" {
 		addr = rpcaddr.Default
 	}
+	if strings.Contains(addr, "://") {
+		return addr
+	}
 	return "http://" + addr
 }
 
+// bearerTransport adds the team token (ADR-0011) to every request.
+type bearerTransport struct{ token string }
+
+func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("Authorization", "Bearer "+b.token)
+	return http.DefaultTransport.RoundTrip(r)
+}
+
 func newClient() concordv1connect.CoordinationServiceClient {
-	return concordv1connect.NewCoordinationServiceClient(http.DefaultClient, daemonURL())
+	hc := http.DefaultClient
+	// Trimmed: a Kubernetes Secret value often ends in a newline.
+	if tok := strings.TrimSpace(os.Getenv("CONCORD_TOKEN")); tok != "" {
+		hc = &http.Client{Transport: bearerTransport{tok}}
+	}
+	return concordv1connect.NewCoordinationServiceClient(hc, daemonURL())
 }
 
 var (
@@ -129,6 +146,11 @@ func preToolUse(ctx context.Context, in hook.Input) {
 		Path:        canonical(raw),
 		CurrentHash: currentHash,
 	}))
+	if connect.CodeOf(err) == connect.CodeUnauthenticated {
+		// Fail open loudly (ADR-0011): a bad credential must not block the team.
+		fmt.Fprintln(os.Stderr, "concord: auth rejected — edits UNPROTECTED, check CONCORD_TOKEN")
+		os.Exit(0)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "concord: version check unavailable, allowing edit:", err)
 		os.Exit(0)
