@@ -47,7 +47,8 @@ func main() {
 	must(err)
 	must(mgr.AddHealthzCheck("healthz", healthz.Ping))
 	must(mgr.AddReadyzCheck("readyz", healthz.Ping))
-	must((&operator.Reconciler{Client: mgr.GetClient(), Config: cfg}).SetupWithManager(mgr))
+	must((&operator.Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(),
+		Recorder: mgr.GetEventRecorder("concord-operator"), Config: cfg}).SetupWithManager(mgr))
 	must(mgr.Start(ctrl.SetupSignalHandler()))
 }
 

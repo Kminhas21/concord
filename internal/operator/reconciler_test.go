@@ -14,9 +14,13 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -52,8 +56,9 @@ func startManager(t *testing.T, cfg *rest.Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &operator.Reconciler{Client: mgr.GetClient(), Config: operator.Config{
-		ConcordImage: testConcordImage, DragonflyImage: testDragonflyImage}}
+	r := &operator.Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(),
+		Recorder: mgr.GetEventRecorder("concord-operator"), Config: operator.Config{
+			ConcordImage: testConcordImage, DragonflyImage: testDragonflyImage}}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}
@@ -311,6 +316,213 @@ func TestReconciler(t *testing.T) {
 		q := sts.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests[corev1.ResourceStorage]
 		if !strings.HasPrefix(q.String(), "1Gi") {
 			t.Errorf("storage = %s, want 1Gi", q.String())
+		}
+	})
+
+	// cond returns the named status condition of the CR, or nil.
+	cond := func(ns, name, typ string) *metav1.Condition {
+		var tc v1alpha1.TeamCoordinator
+		if c.Get(ctx, key(ns, name), &tc) != nil {
+			return nil
+		}
+		return meta.FindStatusCondition(tc.Status.Conditions, typ)
+	}
+	waitCond := func(t *testing.T, ns, name, typ string, status metav1.ConditionStatus, reason string) {
+		t.Helper()
+		eventually(t, fmt.Sprintf("%s/%s %s=%s (%s)", ns, name, typ, status, reason), func() bool {
+			cd := cond(ns, name, typ)
+			return cd != nil && cd.Status == status && (reason == "" || cd.Reason == reason)
+		})
+	}
+	// warningNote waits for a Warning Event with reason on the CR and returns its note.
+	warningNote := func(t *testing.T, ns, name, reason string) string {
+		t.Helper()
+		var note string
+		eventually(t, "Warning event "+reason, func() bool {
+			var l eventsv1.EventList
+			if c.List(ctx, &l, client.InNamespace(ns)) != nil {
+				return false
+			}
+			for _, e := range l.Items {
+				if e.Regarding.Name == name && e.Type == corev1.EventTypeWarning && e.Reason == reason {
+					note = e.Note
+					return true
+				}
+			}
+			return false
+		})
+		return note
+	}
+	absent := func(t *testing.T, obj client.Object, ns, name string) {
+		t.Helper()
+		if err := c.Get(ctx, key(ns, name), obj); !apierrors.IsNotFound(err) {
+			t.Errorf("%T %s/%s: want NotFound, got %v", obj, ns, name, err)
+		}
+	}
+
+	t.Run("fresh CR reports Progressing, endpoint and observedGeneration", func(t *testing.T) {
+		ns := newNS(t)
+		tc := create(t, ns, "fresh", nil)
+		waitCond(t, ns, "fresh", "Progressing", metav1.ConditionTrue, "Reconciling")
+		waitCond(t, ns, "fresh", "Ready", metav1.ConditionFalse, "Progressing")
+		var got v1alpha1.TeamCoordinator
+		if err := c.Get(ctx, key(ns, "fresh"), &got); err != nil {
+			t.Fatal(err)
+		}
+		if want := "fresh-concord." + ns + ".svc.cluster.local:8080"; got.Status.Endpoint != want {
+			t.Errorf("endpoint = %q, want %q", got.Status.Endpoint, want)
+		}
+		if got.Status.ObservedGeneration != tc.Generation || tc.Generation == 0 {
+			t.Errorf("observedGeneration = %d, want %d", got.Status.ObservedGeneration, tc.Generation)
+		}
+		if r := cond(ns, "fresh", "Ready"); r.ObservedGeneration != tc.Generation {
+			t.Errorf("condition observedGeneration = %d", r.ObservedGeneration)
+		}
+	})
+
+	t.Run("Ready follows the Deployment and StatefulSet status", func(t *testing.T) {
+		ns := newNS(t)
+		create(t, ns, "up", func(tc *v1alpha1.TeamCoordinator) { tc.Spec.Replicas = 2 })
+		var dep appsv1.Deployment
+		var sts appsv1.StatefulSet
+		waitGet(t, &dep, ns, "up-concord")
+		waitGet(t, &sts, ns, "up-dragonfly")
+		waitCond(t, ns, "up", "Progressing", metav1.ConditionTrue, "Reconciling")
+		dep.Status = appsv1.DeploymentStatus{Replicas: 2, ReadyReplicas: 2, AvailableReplicas: 2}
+		if err := c.Status().Update(ctx, &dep); err != nil {
+			t.Fatal(err)
+		}
+		// Deployment alone is not enough: Dragonfly must be ready too.
+		time.Sleep(time.Second)
+		if cd := cond(ns, "up", "Ready"); cd == nil || cd.Status != metav1.ConditionFalse {
+			t.Errorf("Ready before Dragonfly is ready = %+v", cd)
+		}
+		sts.Status = appsv1.StatefulSetStatus{Replicas: 1, ReadyReplicas: 1}
+		if err := c.Status().Update(ctx, &sts); err != nil {
+			t.Fatal(err)
+		}
+		waitCond(t, ns, "up", "Ready", metav1.ConditionTrue, "Available")
+		waitCond(t, ns, "up", "Progressing", metav1.ConditionFalse, "")
+		var got v1alpha1.TeamCoordinator
+		if err := c.Get(ctx, key(ns, "up"), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Status.ReadyReplicas != 2 {
+			t.Errorf("readyReplicas = %d, want 2", got.Status.ReadyReplicas)
+		}
+	})
+
+	t.Run("status is not rewritten when nothing changed", func(t *testing.T) {
+		ns := newNS(t)
+		create(t, ns, "quiet", nil)
+		waitCond(t, ns, "quiet", "Progressing", metav1.ConditionTrue, "Reconciling")
+		time.Sleep(time.Second)
+		var before v1alpha1.TeamCoordinator
+		if err := c.Get(ctx, key(ns, "quiet"), &before); err != nil {
+			t.Fatal(err)
+		}
+		// Touch an owned child: the watch re-runs the reconcile, which must not rewrite status.
+		var dep appsv1.Deployment
+		waitGet(t, &dep, ns, "quiet-concord")
+		if err := c.Patch(ctx, &dep, client.RawPatch(types.MergePatchType, []byte(`{"metadata":{"annotations":{"x":"y"}}}`))); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Second)
+		var after v1alpha1.TeamCoordinator
+		if err := c.Get(ctx, key(ns, "quiet"), &after); err != nil {
+			t.Fatal(err)
+		}
+		if before.ResourceVersion != after.ResourceVersion {
+			t.Errorf("resourceVersion %s -> %s: status rewritten on a no-op reconcile", before.ResourceVersion, after.ResourceVersion)
+		}
+	})
+
+	t.Run("secretRef to an existing Secret is used, none generated", func(t *testing.T) {
+		ns := newNS(t)
+		sec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "mine"},
+			Data: map[string][]byte{"tok": []byte("s3cret-value")}}
+		if err := c.Create(ctx, sec); err != nil {
+			t.Fatal(err)
+		}
+		create(t, ns, "byo", func(tc *v1alpha1.TeamCoordinator) {
+			tc.Spec.Auth.SecretRef = &v1alpha1.SecretRef{Name: "mine", Key: "tok"}
+		})
+		var dep appsv1.Deployment
+		waitGet(t, &dep, ns, "byo-concord")
+		var ref *corev1.SecretKeySelector
+		for _, e := range dep.Spec.Template.Spec.Containers[0].Env {
+			if e.Name == "CONCORD_TOKEN" && e.ValueFrom != nil {
+				ref = e.ValueFrom.SecretKeyRef
+			}
+		}
+		if ref == nil || ref.Name != "mine" || ref.Key != "tok" {
+			t.Errorf("CONCORD_TOKEN = %+v", ref)
+		}
+		if got := dep.Spec.Template.Annotations[tokenHashAnno]; got != operator.TokenHash([]byte("s3cret-value")) {
+			t.Errorf("token-hash = %s", got)
+		}
+		absent(t, &corev1.Secret{}, ns, "byo-token")
+	})
+
+	t.Run("secretRef missing blocks the Deployment until the Secret appears", func(t *testing.T) {
+		ns := newNS(t)
+		create(t, ns, "wait", func(tc *v1alpha1.TeamCoordinator) {
+			tc.Spec.Auth.SecretRef = &v1alpha1.SecretRef{Name: "later", Key: "token"}
+		})
+		waitCond(t, ns, "wait", "Ready", metav1.ConditionFalse, "SecretNotFound")
+		waitCond(t, ns, "wait", "Progressing", metav1.ConditionFalse, "SecretNotFound")
+		warningNote(t, ns, "wait", "SecretNotFound")
+		var sts appsv1.StatefulSet
+		waitGet(t, &sts, ns, "wait-dragonfly") // other children still apply
+		absent(t, &appsv1.Deployment{}, ns, "wait-concord")
+		absent(t, &corev1.Secret{}, ns, "wait-token")
+
+		sec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "later"},
+			Data: map[string][]byte{"token": []byte("abc")}}
+		if err := c.Create(ctx, sec); err != nil {
+			t.Fatal(err)
+		}
+		var dep appsv1.Deployment
+		waitGet(t, &dep, ns, "wait-concord") // via backoff retry
+		waitCond(t, ns, "wait", "Ready", metav1.ConditionFalse, "Progressing")
+	})
+
+	t.Run("secretRef with a missing key is SecretNotFound and leaks no value", func(t *testing.T) {
+		ns := newNS(t)
+		sec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "wrongkey"},
+			Data: map[string][]byte{"other": []byte("do-not-leak")}}
+		if err := c.Create(ctx, sec); err != nil {
+			t.Fatal(err)
+		}
+		create(t, ns, "nokey", func(tc *v1alpha1.TeamCoordinator) {
+			tc.Spec.Auth.SecretRef = &v1alpha1.SecretRef{Name: "wrongkey", Key: "token"}
+		})
+		waitCond(t, ns, "nokey", "Ready", metav1.ConditionFalse, "SecretNotFound")
+		note := warningNote(t, ns, "nokey", "SecretNotFound")
+		if !strings.Contains(note, `"token"`) || strings.Contains(note, "do-not-leak") {
+			t.Errorf("event note = %q", note)
+		}
+		absent(t, &appsv1.Deployment{}, ns, "nokey-concord")
+	})
+
+	t.Run("pre-existing unlabelled token Secret is reported, never adopted", func(t *testing.T) {
+		ns := newNS(t)
+		sec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "unm-token"},
+			Data: map[string][]byte{"token": []byte("users-own")}}
+		if err := c.Create(ctx, sec); err != nil {
+			t.Fatal(err)
+		}
+		create(t, ns, "unm", nil)
+		waitCond(t, ns, "unm", "Ready", metav1.ConditionFalse, "TokenSecretUnmanaged")
+		warningNote(t, ns, "unm", "TokenSecretUnmanaged")
+		absent(t, &appsv1.Deployment{}, ns, "unm-concord")
+		var got corev1.Secret
+		if err := c.Get(ctx, key(ns, "unm-token"), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.ResourceVersion != sec.ResourceVersion || len(got.Labels) != 0 || len(got.OwnerReferences) != 0 ||
+			string(got.Data["token"]) != "users-own" {
+			t.Errorf("secret was touched: %+v", got.ObjectMeta)
 		}
 	})
 }

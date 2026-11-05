@@ -7,13 +7,6 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - ""
-  resources:
   - secrets
   - services
   verbs:
@@ -23,6 +16,14 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - apps
   resources:
@@ -47,6 +48,12 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - concord.kminhas21.github.io
+  resources:
+  - teamcoordinators/finalizers
+  verbs:
+  - update
 - apiGroups:
   - networking.k8s.io
   resources:
