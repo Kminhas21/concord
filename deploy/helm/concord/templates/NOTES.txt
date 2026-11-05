@@ -1,0 +1,14 @@
+concord coordination unit "{{ .Release.Name }}" installed in namespace "{{ .Release.Namespace }}".
+
+  Coordination RPC : {{ include "concord.fullname" . }}:{{ .Values.concord.rpcPort }}  (ClusterIP)
+{{- if .Values.concord.metrics.enabled }}
+  Metrics          : {{ include "concord.fullname" . }}:{{ .Values.concord.metrics.port }}/metrics
+{{- end }}
+  Data store       : {{ include "concord.dragonflyName" . }}:{{ .Values.dragonfly.port }}  (headless)
+
+Drive it locally by port-forwarding the RPC service:
+
+  kubectl port-forward svc/{{ include "concord.fullname" . }} {{ .Values.concord.rpcPort }}:{{ .Values.concord.rpcPort }}
+
+concord is stateless; scale it with --set concord.replicaCount=N (all replicas
+share the one Dragonfly). Data is ephemeral unless dragonfly.persistence.enabled.

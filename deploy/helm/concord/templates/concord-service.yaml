@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "concord.fullname" . }}
+  labels:
+    {{- include "concord.labels" . | nindent 4 }}
+    app.kubernetes.io/component: coordination
+spec:
+  # A stable virtual IP that load-balances across the concord replicas. This is
+  # the address clients (in-cluster CI, the kind e2e via port-forward) dial.
+  type: ClusterIP
+  selector:
+    {{- include "concord.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: coordination
+  ports:
+    - name: rpc
+      port: {{ .Values.concord.rpcPort }}
+      targetPort: rpc
+    {{- if .Values.concord.metrics.enabled }}
+    - name: metrics
+      port: {{ .Values.concord.metrics.port }}
+      targetPort: metrics
+    {{- end }}

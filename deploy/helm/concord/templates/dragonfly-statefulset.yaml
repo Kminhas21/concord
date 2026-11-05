@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "concord.dragonflyName" . }}
+  labels:
+    {{- include "concord.labels" . | nindent 4 }}
+    app.kubernetes.io/component: datastore
+spec:
+  # StatefulSet gives the data store a stable identity + DNS; the headless
+  # Service below provides its addressable name. One Dragonfly per unit
+  # (ADR-0004: shape, not scale).
+  serviceName: {{ include "concord.dragonflyName" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "concord.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: datastore
+  template:
+    metadata:
+      labels:
+        {{- include "concord.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: datastore
+    spec:
+      containers:
+        - name: dragonfly
+          image: "{{ .Values.dragonfly.image }}:{{ .Values.dragonfly.tag }}"
+          ports:
+            - name: redis
+              containerPort: {{ .Values.dragonfly.port }}
+          # Readiness gates rollout-Ready on Dragonfly actually accepting on 6379,
+          # so concord (and the ticket-05 e2e) don't drive a not-yet-listening
+          # store — a store error surfaces as an RPC error, not a fail-open allow.
+          readinessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.dragonfly.resources | nindent 12 }}
+      {{- if not .Values.dragonfly.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {} # ephemeral — coordination state is in-flight
+      {{- end }}
+  {{- if .Values.dragonfly.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.dragonfly.persistence.size }}
+  {{- end }}

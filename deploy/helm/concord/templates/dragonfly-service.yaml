@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "concord.dragonflyName" . }}
+  labels:
+    {{- include "concord.labels" . | nindent 4 }}
+    app.kubernetes.io/component: datastore
+spec:
+  # Headless (clusterIP: None): no virtual IP — DNS resolves straight to the
+  # StatefulSet Pod. concord dials this name for its data store.
+  clusterIP: None
+  selector:
+    {{- include "concord.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: datastore
+  ports:
+    - name: redis
+      port: {{ .Values.dragonfly.port }}
+      targetPort: redis

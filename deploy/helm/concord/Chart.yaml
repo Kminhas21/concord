@@ -1,0 +1,18 @@
+apiVersion: v2
+name: concord
+description: >-
+  A concord coordination unit — a stateless concord Deployment and its own
+  Dragonfly data store. The building block the TeamCoordinator operator templates
+  per team namespace.
+type: application
+# version is the chart's own version; appVersion is the concord version it
+# deploys (the default image tag). Bump appVersion in lockstep with a published
+# image tag.
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - concord
+  - coordination
+home: https://github.com/Kminhas21/concord
+sources:
+  - https://github.com/Kminhas21/concord

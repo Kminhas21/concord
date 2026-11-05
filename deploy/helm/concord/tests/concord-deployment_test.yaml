@@ -1,0 +1,133 @@
+suite: concord deployment
+templates:
+  - templates/concord-deployment.yaml
+tests:
+  - it: is a stateless Deployment with 1 replica by default
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: replicaCount drives the replica count
+    set:
+      concord.replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: image tag defaults to the chart appVersion
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kminhas21/concord:0.1.0
+
+  - it: an explicit image tag overrides the default
+    set:
+      image.tag: dev
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kminhas21/concord:dev
+
+  - it: binds 0.0.0.0 and wires the Dragonfly headless-service address
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONCORD_ADDR
+            value: ":8080"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONCORD_DRAGONFLY_ADDR
+            value: RELEASE-NAME-concord-dragonfly:6379
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONCORD_INTENT_TTL
+            value: 600s
+
+  - it: metrics on by default renders the env and the named port
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONCORD_METRICS_ADDR
+            value: ":9464"
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: metrics
+            containerPort: 9464
+
+  - it: metrics disabled drops the metrics env and port
+    set:
+      concord.metrics.enabled: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: CONCORD_METRICS_ADDR
+      - notContains:
+          path: spec.template.spec.containers[0].ports
+          any: true
+          content:
+            name: metrics
+
+  - it: events natsURL set renders CONCORD_NATS_URL
+    set:
+      concord.events.natsURL: nats://example:4222
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONCORD_NATS_URL
+            value: nats://example:4222
+
+  - it: events natsURL empty omits CONCORD_NATS_URL
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: CONCORD_NATS_URL
+
+  - it: has TCP probes on the rpc port
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.tcpSocket.port
+          value: rpc
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.tcpSocket.port
+          value: rpc
+
+  - it: runs with the restricted security posture
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
+
+  - it: carries the standard and component labels
+    asserts:
+      - isSubset:
+          path: metadata.labels
+          content:
+            app.kubernetes.io/part-of: concord
+            app.kubernetes.io/component: coordination
+      - isSubset:
+          path: spec.selector.matchLabels
+          content:
+            app.kubernetes.io/component: coordination
