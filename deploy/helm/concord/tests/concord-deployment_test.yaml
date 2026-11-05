@@ -96,14 +96,63 @@ tests:
           content:
             name: CONCORD_NATS_URL
 
-  - it: has TCP probes on the rpc port
+  - it: has HTTP probes on the rpc port (/healthz liveness, /readyz readiness)
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].livenessProbe.tcpSocket.port
-          value: rpc
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value:
+            path: /healthz
+            port: rpc
       - equal:
-          path: spec.template.spec.containers[0].readinessProbe.tcpSocket.port
-          value: rpc
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value:
+            path: /readyz
+            port: rpc
+      - notExists:
+          path: spec.template.spec.containers[0].livenessProbe.tcpSocket
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe.tcpSocket
+
+  - it: auth existingSecret set wires CONCORD_TOKEN from the Secret
+    set:
+      concord.auth.existingSecret: team-token
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONCORD_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: team-token
+                key: token
+
+  - it: auth secretKey overrides the key
+    set:
+      concord.auth.existingSecret: team-token
+      concord.auth.secretKey: tok
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONCORD_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: team-token
+                key: tok
+
+  - it: auth existingSecret empty omits CONCORD_TOKEN (auth off)
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: CONCORD_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: team-token
+                key: token
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name=="CONCORD_TOKEN")]
 
   - it: runs with the restricted security posture
     asserts:

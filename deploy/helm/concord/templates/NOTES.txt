@@ -1,3 +1,9 @@
+{{- if not .Values.concord.auth.existingSecret }}
+*** WARNING: concord.auth.existingSecret is empty - the RPC is UNAUTHENTICATED. ***
+*** Anyone who can reach the Service can read and write coordination state.   ***
+*** Create a Secret with the team token and set concord.auth.existingSecret.  ***
+
+{{ end -}}
 concord coordination unit "{{ .Release.Name }}" installed in namespace "{{ .Release.Namespace }}".
 
   Coordination RPC : {{ include "concord.fullname" . }}:{{ .Values.concord.rpcPort }}  (ClusterIP)

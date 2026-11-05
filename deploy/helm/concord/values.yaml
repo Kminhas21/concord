@@ -15,6 +15,11 @@ concord:
   # interchangeable and safe to scale; the operator sets this per team.
   replicaCount: 1
   rpcPort: 8080
+  auth:
+    # Name of an existing Secret holding the team token (the chart never
+    # generates one; the operator issues it). Empty = auth OFF.
+    existingSecret: ""
+    secretKey: token
   # Silence window after which an untouched intent record expires.
   intentTTL: 600s
   metrics:
@@ -43,6 +48,10 @@ dragonfly:
     enabled: false
     size: 1Gi
   resources: {}
+
+networkPolicy:
+  # Dragonfly ingress only from this release's concord pods.
+  enabled: true
 
 # Optional name overrides (advanced).
 nameOverride: ""
