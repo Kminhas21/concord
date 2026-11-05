@@ -2,7 +2,7 @@ SHELL := bash
 GOBIN := $(shell go env GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
-.PHONY: setup generate envtest-assetsbuild test gate fmt obs-smoke obs-up obs-down image chart-lint chart-test
+.PHONY: setup generate envtest-assets build test gate fmt obs-smoke obs-up obs-down image chart-lint chart-test
 
 # CHART is the concord coordination-unit Helm chart.
 CHART ?= deploy/helm/concord
@@ -28,6 +28,7 @@ generate:
 	buf lint
 	buf generate
 	$(CONTROLLER_GEN) object paths=./api/v1alpha1 crd paths=./api/v1alpha1 output:crd:dir=deploy/helm/concord-operator/crds
+	$(CONTROLLER_GEN) rbac:roleName=concord-operator paths=./internal/operator output:rbac:dir=deploy/helm/concord-operator/templates
 
 # envtest-assets prints the kube-apiserver/etcd dir; use as
 #   export KUBEBUILDER_ASSETS=$$(make -s envtest-assets)

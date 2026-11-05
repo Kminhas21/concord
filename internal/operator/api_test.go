@@ -14,6 +14,7 @@ import (
 	"github.com/Kminhas21/concord/api/v1alpha1"
 	"github.com/Kminhas21/concord/internal/operator/testenv"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -74,6 +75,19 @@ func TestTeamCoordinatorAPI(t *testing.T) {
 			t.Fatalf("replicas change rejected: %v", err)
 		}
 		tc.Spec.DataStore.Persistence = true
+		err := c.Update(ctx, tc)
+		if !apierrors.IsInvalid(err) || !strings.Contains(err.Error(), "dataStore.persistence/storage are immutable") {
+			t.Fatalf("want immutability rejection, got %v", err)
+		}
+	})
+
+	t.Run("storage immutable", func(t *testing.T) {
+		tc := newTC("immut-storage")
+		if err := c.Create(ctx, tc); err != nil {
+			t.Fatal(err)
+		}
+		q := resource.MustParse("5Gi")
+		tc.Spec.DataStore.Storage = &q
 		err := c.Update(ctx, tc)
 		if !apierrors.IsInvalid(err) || !strings.Contains(err.Error(), "dataStore.persistence/storage are immutable") {
 			t.Fatalf("want immutability rejection, got %v", err)

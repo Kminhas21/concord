@@ -84,7 +84,10 @@ jobs:
       # Kubernetes minor matches kind v0.33's default node image (see Makefile).
       - name: Install envtest assets
         if: runner.os == 'Linux'
-        run: echo "KUBEBUILDER_ASSETS=$(make -s envtest-assets)" >> "$GITHUB_ENV"
+        run: |
+          assets="$(make -s envtest-assets)"
+          if [ -z "$assets" ]; then echo "envtest assets install failed: empty path" >&2; exit 1; fi
+          echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
 
       # Linux runs the full suite (Dragonfly via testcontainers + envtest).
       - name: Test (full, with Dragonfly)
@@ -143,7 +146,10 @@ jobs:
           cache: true
 
       - name: Install envtest assets
-        run: echo "KUBEBUILDER_ASSETS=$(make -s envtest-assets)" >> "$GITHUB_ENV"
+        run: |
+          assets="$(make -s envtest-assets)"
+          if [ -z "$assets" ]; then echo "envtest assets install failed: empty path" >&2; exit 1; fi
+          echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
 
       - name: Test with the race detector
         run: go test -race ./...
