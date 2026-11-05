@@ -1,0 +1,46 @@
+suite: dragonfly networkpolicy
+templates:
+  - templates/networkpolicy.yaml
+tests:
+  - it: enabled by default - ingress to Dragonfly only from this release's concord pods
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: concord
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/component: datastore
+      - equal:
+          path: spec.policyTypes
+          value: [Ingress]
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: concord
+                      app.kubernetes.io/instance: RELEASE-NAME
+                      app.kubernetes.io/component: coordination
+              ports:
+                - port: 6379
+                  protocol: TCP
+
+  - it: dragonfly.port drives the allowed port
+    set:
+      dragonfly.port: 6380
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 6380
+
+  - it: disabled renders nothing
+    set:
+      networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

@@ -33,6 +33,13 @@ spec:
               value: "{{ include "concord.dragonflyName" . }}:{{ .Values.dragonfly.port }}"
             - name: CONCORD_INTENT_TTL
               value: {{ .Values.concord.intentTTL | quote }}
+            {{- if .Values.concord.auth.existingSecret }}
+            - name: CONCORD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.concord.auth.existingSecret | quote }}
+                  key: {{ .Values.concord.auth.secretKey | quote }}
+            {{- end }}
             {{- if .Values.concord.metrics.enabled }}
             - name: CONCORD_METRICS_ADDR
               value: ":{{ .Values.concord.metrics.port }}"
@@ -48,18 +55,20 @@ spec:
             - name: metrics
               containerPort: {{ .Values.concord.metrics.port }}
             {{- end }}
-          # TCP-socket probes: is the RPC port accepting connections? A real
-          # HTTP /healthz + /readyz (Dragonfly-aware) is piece #3.
+          # /healthz never touches Dragonfly; /readyz PINGs it (503 on failure).
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz
               port: rpc
             initialDelaySeconds: 2
             periodSeconds: 10
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /readyz
               port: rpc
             initialDelaySeconds: 2
             periodSeconds: 10
+            timeoutSeconds: 2 # > the server's 1s Dragonfly PING timeout
           # Container-level hardened posture.
           securityContext:
             allowPrivilegeEscalation: false

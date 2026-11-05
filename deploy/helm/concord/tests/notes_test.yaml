@@ -1,0 +1,15 @@
+suite: NOTES.txt auth warning
+templates:
+  - templates/NOTES.txt
+tests:
+  - it: warns that the RPC is unauthenticated when existingSecret is empty
+    asserts:
+      - matchRegexRaw:
+          pattern: "UNAUTHENTICATED"
+
+  - it: no warning when existingSecret is set
+    set:
+      concord.auth.existingSecret: team-token
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "UNAUTHENTICATED"

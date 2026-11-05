@@ -1,0 +1,26 @@
+{{- if .Values.networkPolicy.enabled }}
+# Dragonfly takes ingress only from this release's concord pods. Harmless where
+# the CNI doesn't enforce NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "concord.dragonflyName" . }}
+  labels:
+    {{- include "concord.labels" . | nindent 4 }}
+    app.kubernetes.io/component: datastore
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "concord.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: datastore
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "concord.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: coordination
+      ports:
+        - port: {{ .Values.dragonfly.port }}
+          protocol: TCP
+{{- end }}

@@ -26,8 +26,10 @@ and needs no liveness detection or reaper.
 **Availability (honest scope): the version check fails *open*.** When the daemon
 is unreachable, or the hook cannot hash the target file, the `PreToolUse` hook
 exits 0 and the edit proceeds (with a stderr warning) — concord never bricks
-editing when its own machinery is down. So "mandatory" means *enforced whenever
-the daemon is reachable*, not *enforced unconditionally*. Keep the daemon running
+editing when its own machinery is down. In team mode a rejected team token also
+fails open, with a loud `UNPROTECTED` warning (ADR-0011). So "mandatory" means
+*enforced whenever the daemon is reachable and the client is authorized*, not
+*enforced unconditionally*. Keep the daemon running
 for the guarantee to hold; a crashed daemon degrades to no protection, not to a
 block.
 
@@ -160,16 +162,38 @@ helm plugin install https://github.com/helm-unittest/helm-unittest --verify=fals
 `obs-smoke`): it boots a `kind` cluster, `kind load`s the locally-built concord
 image (no concord registry needed; the cluster pulls the upstream Dragonfly
 image), `helm install`s the chart, waits for the concord + Dragonfly rollout, and
-drives a real stale `CheckEdit` that **blocks** (and a matching one that
-**allows**) through the RPC seam against the in-cluster unit — then tears the
-cluster down. Local/opt-in, not on the CI matrix.
+asserts a missing/wrong team token is **rejected** (`unauthenticated`), drives a
+real stale `CheckEdit` that **blocks** (and a matching one that **allows**)
+through the RPC seam against the in-cluster unit with the right token, checks
+the concord pod goes NotReady when Dragonfly is scaled to 0 and Ready again at
+1 — then tears the cluster down. Local/opt-in, not on the CI matrix.
+
+### Team mode: auth, probes, NetworkPolicy
+
+- **Auth** — set `concord.auth.existingSecret` to a Secret holding the team
+  token (key `concord.auth.secretKey`, default `token`); it is injected as
+  `CONCORD_TOKEN` and the RPC then requires `Authorization: Bearer <token>`.
+  Empty (the default) leaves the RPC unauthenticated and `helm install` prints a
+  warning. Clients (`concord-hook`) send the same token from their own
+  `CONCORD_TOKEN` env, and `CONCORD_ADDR` may be a full URL; a rejected token
+  fails open with a loud `UNPROTECTED` warning (ADR-0011).
+  ```bash
+  kubectl create secret generic team-token --from-literal=token="$(openssl rand -hex 16)"
+  helm install team deploy/helm/concord --set concord.auth.existingSecret=team-token
+  ```
+- **Probes** — concord uses HTTP probes on the `rpc` port: `/healthz`
+  (liveness, process up) and `/readyz` (readiness, Dragonfly reachable).
+- **NetworkPolicy** — `networkPolicy.enabled` (default `true`) admits Dragonfly
+  ingress only from this release's concord pods. It needs a CNI that enforces
+  NetworkPolicy; where unenforced it is harmless.
 
 ## Scope
 
 concord owns only in-flight coordination state. Out of scope by design: leases,
 TTL-based locking, fencing, deadlock detection; durable memory and cross-session
-retrieval (Hindsight's job); multi-node or cross-machine coordination (one daemon
-per machine); and blocking on intent overlap in any form.
+retrieval (Hindsight's job); multi-node or cross-machine coordination in solo/local mode (one
+daemon per machine; hosted mode is one networked coordination unit per team,
+ADR-0010, and coordination *across* units stays out of scope); and blocking on intent overlap in any form.
 
 ## Project docs
 
