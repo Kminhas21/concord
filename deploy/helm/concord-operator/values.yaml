@@ -1,0 +1,22 @@
+# Install values for the concord operator (cluster-wide watch; one per cluster).
+
+image:
+  repository: ghcr.io/kminhas21/concord-operator
+  # tag defaults to .Chart.AppVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Default images for the units the operator builds (a CR's spec.image and
+# spec.dataStore.image override them). concordImage empty = the operator's own
+# default (ghcr.io/kminhas21/concord:<operator version>).
+concordImage: ""
+dragonflyImage: docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0
+
+leaderElect: true
+
+# Manager metrics endpoint. controller-runtime serves it over plain HTTP here (no
+# TLS, no authn); keep it cluster-internal.
+metricsPort: 8082
+healthPort: 8081
+
+resources: {}

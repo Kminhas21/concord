@@ -1,0 +1,126 @@
+suite: concord-operator install chart
+templates:
+  - templates/serviceaccount.yaml
+  - templates/clusterrolebinding.yaml
+  - templates/leader-election-role.yaml
+  - templates/deployment.yaml
+tests:
+  - it: ClusterRoleBinding binds the generated ClusterRole to the ServiceAccount
+    template: templates/clusterrolebinding.yaml
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+      - equal:
+          path: roleRef
+          value:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: concord-operator
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: RELEASE-NAME-concord-operator
+              namespace: NAMESPACE
+  - it: Deployment runs as that ServiceAccount
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: RELEASE-NAME-concord-operator
+  - it: ServiceAccount exists
+    template: templates/serviceaccount.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-concord-operator
+  - it: leader-election Role grants leases in the release namespace only
+    template: templates/leader-election-role.yaml
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Role
+      - equal:
+          path: rules[0].resources
+          value: [leases]
+      - equal:
+          path: rules[0].apiGroups
+          value: [coordination.k8s.io]
+  - it: leader-election RoleBinding targets the ServiceAccount
+    template: templates/leader-election-role.yaml
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: RoleBinding
+      - equal:
+          path: subjects[0].name
+          value: RELEASE-NAME-concord-operator
+  - it: passes --leader-elect by default
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect
+  - it: omits --leader-elect when disabled
+    template: templates/deployment.yaml
+    set:
+      leaderElect: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect
+  - it: image defaults to the chart appVersion and the pinned Dragonfly
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kminhas21/concord-operator:0.1.0
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dragonfly-image=docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --concord-image=
+  - it: image values flow to the flags
+    template: templates/deployment.yaml
+    set:
+      image.tag: dev
+      concordImage: ghcr.io/kminhas21/concord:dev
+      dragonflyImage: example/df:1
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kminhas21/concord-operator:dev
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --concord-image=ghcr.io/kminhas21/concord:dev
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dragonfly-image=example/df:1
+  - it: probes and metrics use the manager addresses
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --health-probe-bind-address=:8081
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metrics-bind-address=:8082
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value:
+            path: /healthz
+            port: health
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value:
+            path: /readyz
+            port: health
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: metrics
+            containerPort: 8082
+            protocol: TCP

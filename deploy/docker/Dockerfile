@@ -23,8 +23,17 @@ COPY . .
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/concord ./cmd/concord
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/event-web ./cmd/event-web
+# VERSION picks the operator's default concord image tag (main.version).
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/concord-operator ./cmd/concord-operator
 
 # distroless static-debian12:nonroot, pinned by digest for reproducibility.
+FROM gcr.io/distroless/static-debian12@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab AS operator
+# ghcr.io/kminhas21/concord-operator: `docker build --target operator`.
+COPY --from=build /out/concord-operator /concord-operator
+ENTRYPOINT ["/concord-operator"]
+
+# The concord image is the LAST stage, so a plain `docker build` still produces it.
 FROM gcr.io/distroless/static-debian12@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/concord /concord
 COPY --from=build /out/event-web /event-web

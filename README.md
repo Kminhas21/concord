@@ -190,9 +190,16 @@ the concord pod goes NotReady when Dragonfly is scaled to 0 and Ready again at
 ## Kubernetes (operator)
 
 Instead of `helm install` per team, apply a `TeamCoordinator` and the operator
-builds the same coordination unit (ADR-0012). The operator's own install chart
-arrives in the next PR; until then run `go run ./cmd/concord-operator` against a
-cluster that has the CRD from `deploy/helm/concord-operator/crds`. The `concord:dev` default image is never published, so pass `--concord-image` pointing at an image you can pull or load (a release tag such as `ghcr.io/kminhas21/concord:<version>`, or a locally built image loaded into kind): `go run ./cmd/concord-operator --concord-image <image>`. PR-2 ships the install chart.
+The operator installs from its own chart, `deploy/helm/concord-operator` (CRD, ClusterRole + binding, ServiceAccount, leader-election Role, Deployment). The image `ghcr.io/kminhas21/concord-operator` is the `operator` target of the same Dockerfile. Nothing is published until a release tag, so for a local cluster build and load both images and point the chart at the concord one:
+
+```bash
+docker build -f deploy/docker/Dockerfile -t ghcr.io/kminhas21/concord:dev .
+docker build -f deploy/docker/Dockerfile --target operator -t ghcr.io/kminhas21/concord-operator:dev .
+kind load docker-image ghcr.io/kminhas21/concord:dev ghcr.io/kminhas21/concord-operator:dev
+helm install concord-operator deploy/helm/concord-operator -n concord-system --create-namespace \n  --set image.tag=dev --set concordImage=ghcr.io/kminhas21/concord:dev
+```
+
+`make operator-test` runs exactly this on a throwaway kind cluster and asserts the CR becomes `Ready`, auth and the version check work, and deleting the CR removes the unit. The manager metrics endpoint (`metricsPort`, default 8082) is plain HTTP with no authn; keep it cluster-internal. Without a cluster-side install you can still `go run ./cmd/concord-operator --concord-image <image>` against a cluster that has the CRD.
 
 ```bash
 kubectl apply -f - <<'EOF'

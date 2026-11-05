@@ -28,6 +28,16 @@ builds:
     ldflags:
       - -s -w
 
+  - id: concord-operator # binary only; the image is built by the release workflow
+    main: ./cmd/concord-operator
+    binary: concord-operator
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
 archives:
   - id: default
     ids: [concord, concord-hook] # both binaries go in one archive per platform
