@@ -485,3 +485,9 @@ Format per entry:
 **Why:** Prove end to end on kind that a TeamCoordinator becomes a working authenticated unit and disappears on delete; keep one copy of the RPC assertions.
 **Alternatives:** Hand-templating the ClusterRole name - rejected, it would fork generated output. A separate copy-only Dockerfile for the operator - rejected, same reasoning as the concord image.
 **Links:** ADR-0012; docs/specs/operator.md (Packaging, Testing Decisions); `.superpowers/sdd/plan-operator/task-5-brief.md`.
+
+## 2026-11-05 — Operator PR-2 final-review fixes; piece #4 done
+**Decision:** The operator chart's `appVersion` is `0.2.0`, the first release that ships the operator image (v0.1.0 predates it, so `concord-operator:0.1.0` would never exist); bump it in lockstep with release tags. The manager's `--metrics-bind-address` default is `:8082`, matching the chart. `LeaderElectionReleaseOnCancel` is on, so a rollout hands over leadership without waiting out the lease. `make operator-test` asserts every `<cr>-*` child exists before deleting the CR and fails on any kubectl error while polling, so "all gone" can't pass vacuously. Piece #4 shipped in PRs #18 and #19.
+**Why:** A default `helm install` must pull a real image; the e2e delete check must prove something.
+**Alternatives:** A release.yml check that the tag equals `appVersion` - deferred, one more moving part before the first operator release.
+**Links:** ADR-0012; docs/specs/operator.md; PRs #18, #19.
