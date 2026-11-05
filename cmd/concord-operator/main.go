@@ -23,8 +23,8 @@ func main() {
 	var cfg operator.Config
 	var metricsAddr, probeAddr string
 	var leaderElect bool
-	flag.StringVar(&cfg.ConcordImage, "concord-image", "ghcr.io/kminhas21/concord:"+version, "default concord image (spec.image overrides)")
-	flag.StringVar(&cfg.DragonflyImage, "dragonfly-image", "docker.dragonflydb.io/dragonflydb/dragonfly:latest", "default Dragonfly image (spec.dataStore.image overrides)")
+	flag.StringVar(&cfg.ConcordImage, "concord-image", operator.DefaultConcordRepository+":"+version, "default concord image (spec.image overrides)")
+	flag.StringVar(&cfg.DragonflyImage, "dragonfly-image", operator.DefaultDragonflyImage, "default Dragonfly image (spec.dataStore.image overrides)")
 	flag.BoolVar(&leaderElect, "leader-elect", false, "enable leader election")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8443", "metrics endpoint address (0 disables)")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "health probe address")

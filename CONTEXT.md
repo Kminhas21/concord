@@ -78,6 +78,14 @@ _Avoid_: publisher (reserve for the internal drain), bus
 One concord Deployment plus its own single Dragonfly, serving one team namespace. Coordination state is never shared across units (ADR-0010).
 _Avoid_: cluster, tenant, instance
 
+**TeamCoordinator**:
+The namespaced custom resource (`concord.kminhas21.github.io/v1alpha1`, short name `tc`) that declares one team's coordination unit. The operator reconciles each one into that unit's Deployment, Dragonfly, Services, NetworkPolicy, and team token Secret (ADR-0012).
+_Avoid_: tenant, team CRD
+
+**Operator**:
+The controller-runtime controller that reconciles every TeamCoordinator into its coordination unit and reports its status; it provisions and heals the unit but never takes part in coordination. Distinct from the *orchestrator* (the agent that dispatches work).
+_Avoid_: controller (alone), provisioner
+
 **Hosted mode**:
 concord run as a networked container behind a cluster-internal Service, serving every agent that can reach its coordination unit. Same guarantee as solo/local mode with a larger blast radius (ADR-0010).
 _Avoid_: cloud mode, server mode

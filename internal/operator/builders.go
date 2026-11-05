@@ -30,6 +30,12 @@ const (
 	// TokenKey is the key of the generated token Secret.
 	TokenKey = "token"
 
+	// DefaultConcordRepository is the concord image repository (the tag tracks the operator version).
+	DefaultConcordRepository = "ghcr.io/kminhas21/concord"
+	// DefaultDragonflyImage is the default Dragonfly image; deploy/helm/concord's
+	// dragonfly.image:dragonfly.tag must match it (parity_test.go enforces this).
+	DefaultDragonflyImage = "docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0"
+
 	rpcPort     = 8080
 	metricsPort = 9464
 	redisPort   = 6379

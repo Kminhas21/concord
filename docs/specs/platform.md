@@ -29,7 +29,7 @@ Team mode scales the *blast radius* of the existing guarantee; it does not chang
 7. As a platform engineer, I want a `TeamCoordinator` custom resource that describes a team's coordination stack, so that teams are declarative Kubernetes objects.
 8. As a platform engineer, I want an operator that reconciles each `TeamCoordinator` into a running concord + data stack, so that I never hand-assemble per-team deployments.
 9. As a platform engineer, I want the operator to self-heal drift (someone edits a managed Deployment; it's corrected), so that the declared state is the real state.
-10. As a platform engineer, I want the operator to report status/conditions (Ready, Provisioning, error) on each `TeamCoordinator`, so that I can see tenant health with `kubectl get`.
+10. As a platform engineer, I want the operator to report status/conditions (Ready, Progressing, error) on each `TeamCoordinator`, so that I can see tenant health with `kubectl get`.
 11. As a platform engineer, I want deleting a `TeamCoordinator` to clean up its whole stack (finalizer), so that de-provisioning a team leaves nothing behind.
 12. As a platform engineer, I want the operator to provision a `ServiceMonitor` per team, so that Prometheus scrapes each tenant automatically (ties into observability).
 
@@ -60,7 +60,7 @@ Team mode scales the *blast radius* of the existing guarantee; it does not chang
 
 **Dual-mode from one codebase.** The coordination service (version check + intent registry) is unchanged in logic. Team mode adds three things around it: tenant scoping, authentication, and Kubernetes-native health/readiness — none of which touch the coordination decision path.
 
-**`TeamCoordinator` custom resource (the operator centerpiece).** One CR per team/repo. Its `spec` carries the repo identifier, concord replica count, embedded data-store config, intent TTL, resource requests/limits, an `ingress` block (host + external-enabled), and an `auth` block (mode + secret reference). Its `status` carries conditions (`Ready`, `Provisioning`), the resolved endpoint, replica readiness, and `observedGeneration`. (Prototype of the resource shape, encoding the decision — not a working manifest:)
+**`TeamCoordinator` custom resource (the operator centerpiece).** One CR per team/repo. Its `spec` carries the repo identifier, concord replica count, embedded data-store config, intent TTL, resource requests/limits, an `ingress` block (host + external-enabled), and an `auth` block (mode + secret reference). Its `status` carries conditions (`Ready`, `Progressing`), the resolved endpoint, replica readiness, and `observedGeneration`. (Prototype of the resource shape, encoding the decision — not a working manifest:)
 
 ```yaml
 kind: TeamCoordinator
@@ -69,12 +69,14 @@ spec:
   replicas: 2
   intentTTL: 600s
   dataStore: { engine: dragonfly, storage: 1Gi }
-  ingress:  { external: true, host: acme.concord.example.com }
-  auth:     { mode: token }           # token | mtls | oidc(future)
+  auth:     { mode: token }           # token today; mtls | oidc future
+  # ingress: { external: true, host: acme.concord.example.com }  # deferred to piece #5
 status:
-  conditions: [{ type: Ready, status: "True" }]
-  endpoint: "concord.team-acme.svc.cluster.local:8973"
+  conditions: [{ type: Ready, status: "True" }, { type: Progressing, status: "False" }]
+  endpoint: "acme-concord.team-acme.svc.cluster.local:8080"
 ```
+
+`ingress` and the per-team `ServiceMonitor` are deferred to pieces #5 and #6-7; the operator (piece #4, `docs/specs/operator.md`) ships the Deployment, Dragonfly, Services, NetworkPolicy, and token Secret. concord listens on port 8080.
 
 **Reconcile behavior.** For each `TeamCoordinator`, the operator creates/updates, in that team's namespace: a concord **Deployment** (N replicas), a **Dragonfly StatefulSet** (self-hosted per team), a **Service** (internal), an optional **Ingress** (when `ingress.external`), a **NetworkPolicy** (namespace isolation), a **ServiceMonitor** (Prometheus), and a **Secret** (the per-team token). It corrects drift, sets status conditions, and uses a **finalizer** so deletion tears the stack down.
 

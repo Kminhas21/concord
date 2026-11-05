@@ -39,8 +39,8 @@ concord:
 
 dragonfly:
   image: docker.dragonflydb.io/dragonflydb/dragonfly
-  # Pin to a version or digest in production.
-  tag: latest
+  # Pinned to a release (matches the operator's default, parity-tested); never latest.
+  tag: v2.1.0
   port: 6379
   persistence:
     # concord's coordination state is in-flight (ADR-0002/0004), so the data

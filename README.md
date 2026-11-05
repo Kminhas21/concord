@@ -187,6 +187,29 @@ the concord pod goes NotReady when Dragonfly is scaled to 0 and Ready again at
   ingress only from this release's concord pods. It needs a CNI that enforces
   NetworkPolicy; where unenforced it is harmless.
 
+## Kubernetes (operator)
+
+Instead of `helm install` per team, apply a `TeamCoordinator` and the operator
+builds the same coordination unit (ADR-0012). The operator's own install chart
+arrives in the next PR; until then run `go run ./cmd/concord-operator` against a
+cluster that has the CRD from `deploy/helm/concord-operator/crds`.
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: concord.kminhas21.github.io/v1alpha1
+kind: TeamCoordinator
+metadata: {name: acme}
+spec: {repo: github.com/acme/monorepo, replicas: 2}
+EOF
+kubectl get tc                                   # Ready / Progressing, endpoint
+kubectl get tc acme -o jsonpath='{.status.endpoint}'   # -> CONCORD_ADDR (http://<endpoint>)
+kubectl get secret acme-token -o jsonpath='{.data.token}' | base64 -d   # -> CONCORD_TOKEN
+```
+
+The token Secret `<cr>-token` is generated once; set `spec.auth.secretRef` to
+use your own. Deleting the CR removes the whole unit through owner-reference
+garbage collection.
+
 ## Scope
 
 concord owns only in-flight coordination state. Out of scope by design: leases,
