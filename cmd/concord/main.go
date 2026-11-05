@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -69,7 +70,7 @@ func configFromEnv() (config, error) {
 	}
 	cfg.metricsAddr = os.Getenv("CONCORD_METRICS_ADDR")
 	cfg.natsURL = os.Getenv("CONCORD_NATS_URL")
-	cfg.token = os.Getenv("CONCORD_TOKEN")
+	cfg.token = strings.TrimSpace(os.Getenv("CONCORD_TOKEN"))
 	return cfg, nil
 }
 

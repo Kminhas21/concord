@@ -313,3 +313,18 @@ func TestTokenSetRejectionIncrementsAuthRejectedMetric(t *testing.T) {
 		t.Fatalf("/metrics missing concord_auth_rejected_total 1; body=%s", b)
 	}
 }
+
+// A Kubernetes Secret value often carries a trailing newline; the daemon must
+// trim it so the bearer clients send (also trimmed) matches.
+func TestTokenWithTrailingNewlineIsTrimmed(t *testing.T) {
+	t.Setenv("CONCORD_TOKEN", "s3cret\n")
+	cfg, err := configFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := startDaemon(t, nil, cfg.token)
+	c := concordv1connect.NewCoordinationServiceClient(http.DefaultClient, base)
+	if _, err := c.Ping(context.Background(), authedReq(&concordv1.PingRequest{Message: "x"}, "Bearer s3cret")); err != nil {
+		t.Fatalf("trimmed bearer rejected: %v", err)
+	}
+}
