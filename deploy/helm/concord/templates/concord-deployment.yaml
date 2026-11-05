@@ -68,6 +68,7 @@ spec:
               port: rpc
             initialDelaySeconds: 2
             periodSeconds: 10
+            timeoutSeconds: 2 # > the server's 1s Dragonfly PING timeout
           # Container-level hardened posture.
           securityContext:
             allowPrivilegeEscalation: false

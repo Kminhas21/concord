@@ -113,6 +113,12 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].readinessProbe.tcpSocket
 
+  - it: readiness probe timeout (2s) exceeds the server's 1s Dragonfly PING timeout
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 2
+
   - it: auth existingSecret set wires CONCORD_TOKEN from the Secret
     set:
       concord.auth.existingSecret: team-token

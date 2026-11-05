@@ -439,3 +439,9 @@ Format per entry:
 **Why:** The daemon now authenticates and exposes real health endpoints, so the chart should use them; Dragonfly has no auth of its own, so isolating it keeps the token meaningful.
 **Alternatives:** Generating the token in the chart with `lookup`/`randAlphaNum` — rejected, flaky across `helm template` and upgrades; the operator (piece #4) issues the Secret. Gating NetworkPolicy on CNI support — rejected; it is harmless where unenforced.
 **Links:** ADR-0011; docs/specs/team-mode.md "Chart"; team-mode ticket 04.
+
+## 2026-11-04 — Team-mode ticket 05: kind e2e proves auth + readiness; readiness probe timeout 2s
+**Decision:** `make chart-test` now creates a random-token Secret (`cu-token`, never echoed), installs with `concord.auth.existingSecret=cu-token`, and asserts: missing and wrong token -> `unauthenticated`; right token -> stale `CheckEdit` blocks, matching allows; scaling the Dragonfly StatefulSet to 0 turns the concord pod NotReady and scaling back to 1 returns it to Ready. The concord readinessProbe gets `timeoutSeconds: 2` (the server's `/readyz` Dragonfly PING timeout is 1s, equal to the Kubernetes default probe timeout — a race). helm-unittest now also covers the NOTES.txt auth-off warning in both states. Piece #3 closes.
+**Why:** The unit tests prove each part; only a real cluster proves the packaged unit rejects in-cluster and that probes follow Dragonfly.
+**Alternatives:** Asserting NetworkPolicy enforcement on kind — skipped; kind's default CNI may not enforce it, so the helm-unittest shape check stands.
+**Links:** ADR-0011; docs/specs/team-mode.md "kind e2e"; `.superpowers/sdd/plan/task-5-brief.md`.
