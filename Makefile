@@ -79,7 +79,7 @@ chart-lint:
 chart-test:
 	bash scripts/chart-test.sh
 
-# operator-test: the operator's kind end-to-end gate — install the operator
+# operator-test: the operator's kind end-to-end gate -- install the operator
 # chart, apply a TeamCoordinator, assert Ready + authenticated RPC + delete GC.
 # Needs docker + kind + helm + kubectl; local/opt-in like chart-test.
 operator-test:

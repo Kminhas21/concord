@@ -200,7 +200,7 @@ helm install concord-operator deploy/helm/concord-operator -n concord-system --c
   --set image.tag=dev --set concordImage=ghcr.io/kminhas21/concord:dev
 ```
 
-`make operator-test` runs exactly this on a throwaway kind cluster and asserts the CR becomes `Ready`, auth and the version check work, and deleting the CR removes the unit. The manager metrics endpoint (`metricsPort`, default 8082) is plain HTTP with no authn; keep it cluster-internal. Without a cluster-side install you can still `go run ./cmd/concord-operator --concord-image <image>` against a cluster that has the CRD.
+`make operator-test` runs exactly this on a throwaway kind cluster and asserts the CR becomes `Ready`, auth and the version check work, and deleting the CR removes the unit. The manager metrics endpoint (`metricsPort`, default 8082) is plain HTTP with no authn; keep it cluster-internal. Helm installs `crds/` on first install but never upgrades them; to upgrade the CRD run `kubectl apply --server-side -f deploy/helm/concord-operator/crds/`. Without a cluster-side install you can still `go run ./cmd/concord-operator --concord-image <image>` against a cluster that has the CRD.
 
 ```bash
 kubectl apply -f - <<'EOF'

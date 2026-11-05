@@ -237,6 +237,7 @@ jobs:
       # The operator install chart (CRD + generated ClusterRole + Deployment).
       - name: operator chart (lint, kubeconform, unittest)
         run: |
+          set -o pipefail
           helm lint deploy/helm/concord-operator
           helm template deploy/helm/concord-operator | kubeconform -strict -summary
           helm unittest deploy/helm/concord-operator

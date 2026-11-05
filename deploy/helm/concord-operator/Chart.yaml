@@ -4,8 +4,11 @@ description: >-
   The concord TeamCoordinator operator: reconciles each TeamCoordinator custom
   resource into a running coordination unit (concord + Dragonfly) in its namespace.
 type: application
+# version is the chart's own version; appVersion is the operator version it
+# deploys (the default image tag). Bump appVersion in lockstep with a published
+# image tag.
 version: 0.1.0
-appVersion: "0.1.0"
+appVersion: "0.2.0"
 keywords:
   - concord
   - operator
