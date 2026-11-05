@@ -19,7 +19,7 @@ Team mode scales the *blast radius* of the existing guarantee; it does not chang
 
 **Tenants & coordination at team scale**
 1. As a team lead, I want to provision a coordination instance for my team's repo declaratively, so that all agents on that repo are coordinated without my running anything locally.
-2. As a teammate, I want my Claude Code edits coordinated against my colleagues' agents on the same repo, so that we don't silently clobber each other's work.
+2. As a teammate, I want my Claude Code edits coordinated against my colleagues' agents on the same repo, so that we don't silently clobber each other's work. (Honest scope: the version check is per-holder against the holder's own disk, so it blocks cross-teammate stale edits only where agents share a working tree; across separate clones the cross-teammate value is the intent registry — see `team-mode.md`.)
 3. As a CI pipeline, I want my automated coding agents (running as Kubernetes Jobs) coordinated against each other and against humans, so that a nightly migration fleet doesn't corrupt in-flight human work.
 4. As a team, I want each team's coordination state fully isolated from other teams, so that one team's activity or failure cannot affect another.
 5. As a teammate on a laptop, I want to reach my team's concord securely over the internet, so that I get team-scale protection without being in the cluster.

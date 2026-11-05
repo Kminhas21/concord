@@ -25,8 +25,8 @@ Each piece is one turn of the same crank. Do them in order; don't skip the gate.
 | # | Piece | Status | Spec | Acceptance gate |
 |---|-------|--------|------|-----------------|
 | 1 | **Observability** — OTel metrics + Grafana; NATS JetStream + event-web live SSE feed | ✅ **done** (PRs #5, #6) | [observability.md](specs/observability.md) | `make obs-smoke` |
-| 2 | **Containerize + Helm** — canonical image → GHCR; chart for one concord+data unit | 🔨 **in progress** | [containerize-helm.md](specs/containerize-helm.md) | `make chart-test` (kind) |
-| 3 | **Team-mode app changes** — tenant scoping, per-team auth, HTTP health/readiness probes | ⬜ next | _to spec_ | _tbd_ |
+| 2 | **Containerize + Helm** — canonical image → GHCR; chart for one concord+data unit | ✅ **done** (PRs #14, #15) | [containerize-helm.md](specs/containerize-helm.md) | `make chart-test` (kind) |
+| 3 | **Team-mode app changes** — team-token auth, HTTP health/readiness, Dragonfly NetworkPolicy (tenancy = one unit per team) | 🔨 **in progress** | [team-mode.md](specs/team-mode.md) | Go seam tests + extended `make chart-test` (kind) |
 | 4 | **The operator** — `TeamCoordinator` CRD + controller-runtime, on minikube/kind | ⬜ | _to spec_ | envtest + kind |
 | 5 | **IaC + EKS** — Terraform stands up AWS (EKS/VPC/EC2/IRSA/ECR/Route53/ACM) | ⬜ | _to spec_ | `terraform test` + LocalStack; real EKS on demand |
 | 6 | **GitOps** — Argo CD app-of-apps, teams-as-code | ⬜ | _to spec_ | argocd CLI + kind |
