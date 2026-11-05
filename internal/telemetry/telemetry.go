@@ -57,6 +57,7 @@ type Metrics struct {
 	divergences   metric.Int64Counter
 	intentExpired metric.Int64Counter
 	eventsDropped metric.Int64Counter
+	authRejected  metric.Int64Counter
 	rpcDuration   metric.Float64Histogram
 }
 
@@ -80,6 +81,8 @@ func NewMetrics(meter metric.Meter, liveIntents intentCounter) *Metrics {
 		metric.WithDescription("Intent records that expired on silence."))
 	m.eventsDropped, _ = meter.Int64Counter("concord_events_dropped",
 		metric.WithDescription("Domain events dropped by best-effort telemetry backpressure."))
+	m.authRejected, _ = meter.Int64Counter("concord_auth_rejected",
+		metric.WithDescription("RPCs rejected for a missing or invalid team token."))
 	m.rpcDuration, _ = meter.Float64Histogram("concord_rpc_duration",
 		metric.WithUnit("s"),
 		metric.WithDescription("RPC handler latency by method."))
@@ -93,6 +96,7 @@ func NewMetrics(meter metric.Meter, liveIntents intentCounter) *Metrics {
 	m.divergences.Add(ctx, 0)
 	m.eventsDropped.Add(ctx, 0)
 	m.intentExpired.Add(ctx, 0)
+	m.authRejected.Add(ctx, 0)
 
 	gauge, _ := meter.Int64ObservableGauge("concord_live_intents",
 		metric.WithDescription("Active intent records."))
@@ -140,6 +144,9 @@ func (m *Metrics) EventDropped(ctx context.Context) { m.eventsDropped.Add(ctx, 1
 // IntentExpired records one intent record expiring on silence. Wired by the
 // event plane in a later ticket.
 func (m *Metrics) IntentExpired(ctx context.Context) { m.intentExpired.Add(ctx, 1) }
+
+// AuthRejected records one RPC rejected by the team-token interceptor.
+func (m *Metrics) AuthRejected(ctx context.Context) { m.authRejected.Add(ctx, 1) }
 
 // recordRPC records one RPC's handler latency under its method label.
 func (m *Metrics) recordRPC(ctx context.Context, method string, d time.Duration) {

@@ -12,11 +12,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/Kminhas21/concord/gen/concord/v1/concordv1connect"
+	"github.com/Kminhas21/concord/internal/auth"
 	"github.com/Kminhas21/concord/internal/coordination"
 	"github.com/Kminhas21/concord/internal/event"
 	"github.com/Kminhas21/concord/internal/rpcaddr"
@@ -45,6 +47,9 @@ type config struct {
 	// event emission; a connect failure at startup also degrades to disabled,
 	// never stopping the daemon (events are strictly best-effort — ADR-0009).
 	natsURL string
+	// token is the team token (CONCORD_TOKEN). Empty = auth off (solo mode);
+	// non-empty requires "Authorization: Bearer <token>" on every RPC (ADR-0011).
+	token string
 }
 
 func configFromEnv() (config, error) {
@@ -64,6 +69,7 @@ func configFromEnv() (config, error) {
 	}
 	cfg.metricsAddr = os.Getenv("CONCORD_METRICS_ADDR")
 	cfg.natsURL = os.Getenv("CONCORD_NATS_URL")
+	cfg.token = os.Getenv("CONCORD_TOKEN")
 	return cfg, nil
 }
 
@@ -75,6 +81,20 @@ const eventBufferSize = 1024
 // before degrading to emission-disabled. It covers a compose start-order race
 // without letting a permanently-absent NATS stall the daemon.
 const natsConnectTimeout = 15 * time.Second
+
+// authLogGap is the minimum spacing of the "auth rejected" log line, so a
+// misconfigured client cannot flood the log. The token is never logged.
+const authLogGap = 10 * time.Second
+
+var lastAuthLog atomic.Int64 // unix nanos of the last emitted line
+
+func logAuthRejected() {
+	now := time.Now().UnixNano()
+	last := lastAuthLog.Load()
+	if now-last >= int64(authLogGap) && lastAuthLog.CompareAndSwap(last, now) {
+		log.Printf("concord: rejected RPC with missing or invalid team token (further rejections suppressed for %s)", authLogGap)
+	}
+}
 
 // run serves the CoordinationService on ln until ctx is cancelled, then shuts
 // down gracefully. When metricsLn is non-nil the daemon is instrumented and
@@ -112,6 +132,15 @@ func run(ctx context.Context, ln, metricsLn net.Listener, cfg config) error {
 		metricsSrv  *http.Server
 		publisher   *stream.Publisher
 	)
+	if cfg.token != "" {
+		// First = outermost: rejected calls never reach telemetry or coordination.
+		handlerOpts = append(handlerOpts, connect.WithInterceptors(auth.Interceptor(cfg.token, func(ctx context.Context) {
+			if metrics != nil {
+				metrics.AuthRejected(ctx)
+			}
+			logAuthRejected()
+		})))
+	}
 	if metricsLn != nil {
 		prov, err := telemetry.NewProvider()
 		if err != nil {
