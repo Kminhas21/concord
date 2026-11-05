@@ -67,7 +67,7 @@ jobs:
       - name: Verify generated code is current
         if: runner.os == 'Linux'
         run: |
-          buf generate
+          make generate # buf + controller-gen
           git diff --exit-code
 
       - name: gofmt
@@ -80,7 +80,23 @@ jobs:
           go vet ./...
           go build ./...
 
-      # Linux runs the full suite (Dragonfly via testcontainers).
+      # The operator/chart parity test shells out to `helm template`; on Linux it
+      # must run, not skip. (Windows skips it: no helm there by design.)
+      - uses: azure/setup-helm@v4
+        if: runner.os == 'Linux'
+        with:
+          version: v4.3.0 # same as the chart job
+
+      # envtest = a real kube-apiserver + etcd for the operator's API tests. The
+      # Kubernetes minor matches kind v0.33's default node image (see Makefile).
+      - name: Install envtest assets
+        if: runner.os == 'Linux'
+        run: |
+          assets="$(make -s envtest-assets)"
+          if [ -z "$assets" ]; then echo "envtest assets install failed: empty path" >&2; exit 1; fi
+          echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
+
+      # Linux runs the full suite (Dragonfly via testcontainers + envtest).
       - name: Test (full, with Dragonfly)
         if: runner.os == 'Linux'
         run: go test ./...
@@ -135,6 +151,12 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      - name: Install envtest assets
+        run: |
+          assets="$(make -s envtest-assets)"
+          if [ -z "$assets" ]; then echo "envtest assets install failed: empty path" >&2; exit 1; fi
+          echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
 
       - name: Test with the race detector
         run: go test -race ./...

@@ -55,3 +55,9 @@ tests:
           path: spec.selector.matchLabels
           content:
             app.kubernetes.io/component: datastore
+
+  - it: pins the Dragonfly image to a release tag (never latest), matching the operator default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0
