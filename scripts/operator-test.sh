@@ -70,23 +70,24 @@ assert_version_check "$TOKEN"
 
 echo -n "==> delete the CR removes every $CR-* object: "
 kill "$PF_PID" >/dev/null 2>&1 || true; PF_PID=""
-# list_children: names of every $CR-* object. A kubectl failure aborts the script
-# (set -e) instead of reading as "none left"; only grep's no-match is tolerated.
+# list_children: names of every $CR-* object. A kubectl failure returns non-zero
+# (set -e is off inside $(...), so callers must check) instead of reading as
+# "none left"; only grep's no-match is tolerated.
 list_children() {
   local out
-  out=$(k -n "$NS" get deploy,statefulset,svc,secret,networkpolicy -o name)
+  out=$(k -n "$NS" get deploy,statefulset,svc,secret,networkpolicy -o name) || return 1
   grep "/$CR-" <<<"$out" || true
 }
 # Non-vacuous: the children must exist before the delete, or "gone" proves nothing.
 CHILD_RE=${CHILD_RE:-"deployment.apps/$CR-concord|statefulset.apps/$CR-dragonfly|service/$CR-concord|service/$CR-dragonfly|networkpolicy.networking.k8s.io/$CR-dragonfly|secret/$CR-token"}
-before=$(list_children)
+before=$(list_children) || fail x "kubectl failed listing children before delete"
 for want in ${CHILD_RE//|/ }; do
   grep -q "$want" <<<"$before" || fail x "expected child $want before delete; have: $before"
 done
 k -n "$NS" delete teamcoordinator "$CR" --timeout=60s >/dev/null
 left=""
 for _ in $(seq 1 60); do
-  left=$(list_children)
+  left=$(list_children) || fail x "kubectl failed listing children after delete"
   [ -z "$left" ] && break
   sleep 1
 done
